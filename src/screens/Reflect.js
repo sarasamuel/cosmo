@@ -4,11 +4,10 @@
 import React from 'react';
 import { ScrollView, View, Text } from 'react-native';
 import { useStore, useTheme } from '../store/Store';
-import { REFLECTION, TREND, WEEKS, MONTH } from '../data/data';
+import { REFLECTION, WEEKS, MONTH } from '../data/data';
 import { Card, Glyph, Eyebrow, SectionTitle, Pill } from '../components/primitives';
 import Icon from '../components/Icon';
 import AlignmentRing from '../components/AlignmentRing';
-import Sparkline from '../components/Sparkline';
 import WeekScoreTrend from '../weekly/WeekScoreTrend';
 import PastWeeks from '../weekly/PastWeeks';
 import ActivityTracker from '../weekly/ActivityTracker';
@@ -44,11 +43,6 @@ export default function Reflect() {
   const delta = REFLECTION.aligned - REFLECTION.alignedLast;
   const lived = [...identities, drift];
   const avg = Math.round(WEEKS.reduce((s, w) => s + w.aligned, 0) / WEEKS.length);
-  const trDir = (id) => {
-    const tr = TREND[id];
-    if (!tr) return 0;
-    return tr[tr.length - 1] + tr[tr.length - 2] - (tr[0] + tr[1]);
-  };
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 36, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
@@ -87,7 +81,7 @@ export default function Reflect() {
       {/* per-week breakdown — plan vs lived */}
       <View style={{ marginTop: 26 }}>
         <SectionTitle style={{ marginBottom: 14 }}>Last week, plan vs. lived</SectionTitle>
-        <PastWeeks weeks={WEEKS} />
+        <PastWeeks weeks={WEEKS} year={MONTH.year} />
       </View>
 
       {/* monthly activity tracker */}
@@ -103,29 +97,6 @@ export default function Reflect() {
           <StackedBar items={lived} field="actual" label="Lived" colorsFor={colorsFor} />
         </View>
       </Card>
-
-      {/* trends */}
-      <View style={{ marginTop: 26 }}>
-        <SectionTitle style={{ marginBottom: 14 }}>Identity trends</SectionTitle>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-          {identities.map((i) => {
-            const d = trDir(i.id);
-            const c = colorsFor(i);
-            const arrow = d > 0.02 ? '↑' : d < -0.02 ? '↓' : '→';
-            const arrowColor = d > 0.02 ? t.good : d < -0.02 ? t.warn : t.inkFaint;
-            return (
-              <Card key={i.id} style={{ padding: 18, width: '47.5%', flexGrow: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                  <Glyph char={i.glyph} size={26} fontSize={13} color={c.color} />
-                  <Text style={{ fontSize: 14.5, fontFamily: sans(600), color: t.ink }}>{i.name}</Text>
-                  <Text style={{ marginLeft: 'auto', fontSize: 12.5, fontFamily: sans(700), color: arrowColor }}>{arrow}</Text>
-                </View>
-                <Sparkline data={TREND[i.id]} color={c.color} w={150} h={34} gid={`tr-${i.id}`} />
-              </Card>
-            );
-          })}
-        </View>
-      </View>
 
       {/* summary */}
       <Card style={{ marginTop: 26, padding: 30 }}>

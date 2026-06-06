@@ -86,7 +86,7 @@ function WeekCard({ w, delta, isOpen, onToggle, find, colorsFor }) {
   );
 }
 
-export default function PastWeeks({ weeks }) {
+export default function PastWeeks({ weeks, year }) {
   const { t, colorsFor } = useTheme();
   const { identities, drift } = useStore();
   const RECENT = 1;
@@ -97,8 +97,10 @@ export default function PastWeeks({ weeks }) {
   const [open, setOpen] = useState(0);
   const [calOpen, setCalOpen] = useState(false);
   const [picked, setPicked] = useState(null);
+  const [monthWin, setMonthWin] = useState(0); // first visible month in the window
 
   const deltaFor = (k) => (weeks[k + 1] ? weeks[k].aligned - weeks[k + 1].aligned : null);
+  const monthLabel = (m) => `${MONTH_NAME[m] || m}${year ? ' ' + year : ''}`;
 
   const groups = [];
   older.forEach((w, i) => {
@@ -111,6 +113,14 @@ export default function PastWeeks({ weeks }) {
     }
     g.items.push({ w, k });
   });
+
+  // show only one month at a time; arrows page to earlier / later months
+  const WIN = 1;
+  const maxWin = Math.max(0, groups.length - WIN);
+  const winStart = Math.min(monthWin, maxWin);
+  const visible = groups.slice(winStart, winStart + WIN);
+  const canNewer = winStart > 0; // later (more recent) months
+  const canOlder = winStart + WIN < groups.length; // earlier months
 
   return (
     <View style={{ gap: 12 }}>
@@ -144,10 +154,45 @@ export default function PastWeeks({ weeks }) {
 
           {calOpen && (
             <View style={{ padding: 16, paddingBottom: 10, borderRadius: t.radii.md, backgroundColor: t.surface2, borderWidth: 1, borderColor: t.line }}>
-              {groups.map((g) => (
+              {groups.length > WIN && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    marginHorizontal: 2,
+                    marginBottom: 12,
+                    paddingBottom: 12,
+                    borderBottomWidth: 1,
+                    borderBottomColor: t.line2,
+                  }}
+                >
+                  <Pressable
+                    disabled={!canNewer}
+                    onPress={() => setMonthWin((w) => Math.max(0, Math.min(w, maxWin) - 1))}
+                    style={{ width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface3, borderWidth: 1, borderColor: t.line, opacity: canNewer ? 1 : 0.32 }}
+                  >
+                    <View style={{ transform: [{ rotate: '180deg' }] }}>
+                      <Icon name="chevron" size={16} color={t.inkSoft} />
+                    </View>
+                  </Pressable>
+                  <Text style={{ flex: 1, textAlign: 'center', fontSize: 13, fontFamily: sans(700), color: t.inkSoft }}>
+                    {monthLabel(visible[0].month)}
+                  </Text>
+                  <Pressable
+                    disabled={!canOlder}
+                    onPress={() => setMonthWin((w) => Math.min(maxWin, Math.min(w, maxWin) + 1))}
+                    style={{ width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface3, borderWidth: 1, borderColor: t.line, opacity: canOlder ? 1 : 0.32 }}
+                  >
+                    <Icon name="chevron" size={16} color={t.inkSoft} />
+                  </Pressable>
+                </View>
+              )}
+              {visible.map((g) => (
                 <View key={g.month} style={{ marginBottom: 6 }}>
                   <Text style={{ fontSize: 11.5, fontFamily: sans(700), letterSpacing: 0.7, textTransform: 'uppercase', color: t.inkFaint, marginHorizontal: 4, marginBottom: 8 }}>
-                    {MONTH_NAME[g.month] || g.month}
+                    {monthLabel(g.month)}
                   </Text>
                   <View style={{ gap: 6 }}>
                     {g.items.map(({ w, k }) => (
