@@ -17,8 +17,10 @@ const StoreContext = createContext(null);
 const KEY_THEME = 'cosmo-theme';
 const KEY_STARTED = 'cosmo-started';
 const KEY_WEEK = 'cosmo-week-' + THIS_WEEK.label;
+const KEY_FORM = 'cosmo-form';
 
 export function StoreProvider({ children }) {
+  const [form, setFormState] = useState('constellation');
   const [theme, setThemeName] = useState('dark');
   const [started, setStarted] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -41,14 +43,16 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     (async () => {
       try {
-        const [t, s, w] = await Promise.all([
+        const [t, s, w, f] = await Promise.all([
           AsyncStorage.getItem(KEY_THEME),
           AsyncStorage.getItem(KEY_STARTED),
           AsyncStorage.getItem(KEY_WEEK),
+          AsyncStorage.getItem(KEY_FORM),
         ]);
         if (t === 'light' || t === 'dark') setThemeName(t);
         if (s === '1') setStarted(true);
         if (w === '1') setWeekPlanned(true);
+        if (f === 'orbit' || f === 'constellation') setFormState(f);
       } catch (e) {
         // ignore — fall back to defaults
       } finally {
@@ -61,6 +65,8 @@ export function StoreProvider({ children }) {
     setThemeName(t);
     AsyncStorage.setItem(KEY_THEME, t).catch(() => {});
   }, []);
+
+  const setForm = useCallback((f) => { setFormState(f); AsyncStorage.setItem(KEY_FORM, f).catch(() => {}); }, []);
 
   const enter = useCallback(() => {
     setStarted(true);
@@ -201,6 +207,8 @@ export function StoreProvider({ children }) {
       hydrated,
       tab,
       goTo,
+      form,
+      setForm,
       identities,
       setIdentities,
       drift,
@@ -235,7 +243,7 @@ export function StoreProvider({ children }) {
       colorsFor: (idn) => identityColors(idn, themeObj),
     }),
     [
-      theme, themeObj, setTheme, started, hydrated, tab, goTo, identities, drift,
+      theme, themeObj, setTheme, started, hydrated, tab, goTo, form, setForm, identities, drift,
       relax, sessions, align, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
       toggleDriftApp, addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,

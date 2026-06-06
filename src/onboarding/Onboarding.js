@@ -12,6 +12,7 @@ import Icon from '../components/Icon';
 import Starfield from '../components/Starfield';
 import StatusBar from '../components/StatusBar';
 import CosmosViz from '../viz/CosmosViz';
+import ConstellationViz from '../viz/ConstellationViz';
 import OnbCadence from './OnbCadence';
 import OnbAllocate from './OnbAllocate';
 import { CADENCE, FREE_TIME, personaColor } from './helpers';
@@ -41,7 +42,7 @@ function WelcomeConstellation() {
 
 export default function Onboarding() {
   const { t } = useTheme();
-  const { enter } = useStore();
+  const { enter, form, setForm } = useStore();
   const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState(0);
@@ -257,11 +258,38 @@ export default function Onboarding() {
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <Eyebrow style={{ marginBottom: 18 }}>Your cosmos</Eyebrow>
             <Text style={{ fontFamily: serif(500), fontSize: 32, color: t.ink, marginBottom: 10, textAlign: 'center' }}>Here is the shape of you.</Text>
-            <Text style={{ fontSize: 16, color: t.inkSoft, marginBottom: 10, lineHeight: 24, textAlign: 'center', maxWidth: 440 }}>
-              These identities now orbit together. Cosmo will help you keep them in balance.
+            <Text style={{ fontSize: 16, color: t.inkSoft, marginBottom: 14, lineHeight: 24, textAlign: 'center', maxWidth: 440 }}>
+              These identities now move together. Pick the view that speaks to you — you can switch anytime.
             </Text>
+
+            {/* Constellation / Orbit toggle — the choice becomes the Portfolio default */}
+            <View style={{ flexDirection: 'row', backgroundColor: t.surface2, borderRadius: 999, padding: 4, gap: 2, borderWidth: 1, borderColor: t.line }}>
+              {[
+                { f: 'constellation', label: 'Constellation' },
+                { f: 'orbit', label: 'Orbit' },
+              ].map((o) => {
+                const on = form === o.f;
+                return (
+                  <Pressable
+                    key={o.f}
+                    onPress={() => setForm(o.f)}
+                    style={[
+                      { paddingVertical: 8, paddingHorizontal: 18, borderRadius: 999, backgroundColor: on ? t.surface : 'transparent' },
+                      on ? t.shadow.sm : null,
+                    ]}
+                  >
+                    <Text style={{ fontSize: 13, fontFamily: sans(700), color: on ? t.ink : t.inkFaint }}>{o.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
             <View style={{ width: '100%', marginVertical: 12 }}>
-              <CosmosViz identities={IDENTITIES} allowLog={false} name={USER.name} />
+              {form === 'constellation' ? (
+                <ConstellationViz identities={IDENTITIES} allowLog={false} interactive={false} name={USER.name} />
+              ) : (
+                <CosmosViz identities={IDENTITIES} allowLog={false} interactive={false} name={USER.name} />
+              )}
             </View>
             <Button onPress={enter} style={{ paddingHorizontal: 48 }}>
               Enter Cosmos

@@ -1,9 +1,8 @@
 /* Portfolio / Dashboard tab, ported from screens.jsx (Dashboard + CosmosHero).
    Includes the expandable Drift breakdown (aggregate of tracked apps). */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ScrollView, View, Text, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useStore, useTheme } from '../store/Store';
 import { USER, COACH, fmtMins } from '../data/data';
 import CosmosViz from '../viz/CosmosViz';
@@ -17,8 +16,6 @@ import AlignmentRing from '../components/AlignmentRing';
 import CoachNote from '../components/CoachNote';
 import WeekPlanBanner from '../weekly/WeekPlanBanner';
 import { serif, sans } from '../theme/fonts';
-
-const KEY_FORM = 'cosmo-form';
 
 function LegendItem({ filled, label, dk }) {
   return (
@@ -43,17 +40,12 @@ function LegendItem({ filled, label, dk }) {
    it down to the viz via themeObj. */
 function CosmosHero({ identities, onTap, name }) {
   const dk = darkTheme;
-  const { cosmosFocus, focusCosmos, clearCosmos } = useStore();
-  const [form, setForm] = useState('constellation');
-  useEffect(() => {
-    AsyncStorage.getItem(KEY_FORM).then((v) => {
-      if (v === 'orbit' || v === 'constellation') setForm(v);
-    });
-  }, []);
+  // `form` is shared via the store so the onboarding reveal and the Portfolio
+  // agree on which visualization is the default (persisted to AsyncStorage there).
+  const { form, setForm, cosmosFocus, focusCosmos, clearCosmos } = useStore();
   const pick = (f) => {
     setForm(f);
-    clearCosmos(); // releasing focus when swapping the mounted viz
-    AsyncStorage.setItem(KEY_FORM, f).catch(() => {});
+    clearCosmos(); // release focus when swapping the mounted viz
   };
   const isConst = form === 'constellation';
   const focusProps = { focusedId: cosmosFocus?.id, onFocus: focusCosmos, onRelease: clearCosmos };

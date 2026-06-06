@@ -91,6 +91,7 @@ export default function CosmosViz({
   focusedId,
   onFocus,
   onRelease,
+  interactive = true, // when false (e.g. onboarding reveal), taps don't focus
 }) {
   const ctx = useTheme();
   // when rendered inside the always-dark cosmos card, a themeObj override is
@@ -322,7 +323,7 @@ export default function CosmosViz({
               <G
                 key={idn.id}
                 opacity={op}
-                onPress={() => focusNode(idn, proj.findIndex((p) => p.idn.id === idn.id))}
+                onPress={interactive ? () => focusNode(idn, proj.findIndex((p) => p.idn.id === idn.id)) : undefined}
               >
                 <Circle cx={sx} cy={sy} r={base * 1.5} fill={c.color} opacity={(isSel ? 0.28 : 0.18) * (isSel ? 1 : depth)} />
                 <Circle
@@ -368,9 +369,9 @@ export default function CosmosViz({
         </Svg>
       )}
 
-      {/* focused-planet detail card — only when uncontrolled (e.g. onboarding);
+      {/* focused-planet detail card — only when interactive AND uncontrolled;
           in the app it is portaled to the root so it floats above the tab bar. */}
-      {!controlled && selIdn && (
+      {!controlled && interactive && selIdn && (
         <View
           style={[
             {

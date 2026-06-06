@@ -128,6 +128,7 @@ export default function ConstellationViz({
   focusedId,
   onFocus,
   onRelease,
+  interactive = true, // when false (e.g. onboarding reveal), taps don't focus
 }) {
   const ctx = useTheme();
   const t = themeObj || ctx.t;
@@ -296,7 +297,7 @@ export default function ConstellationViz({
             const bright = (0.42 + 0.58 * fill) * (0.85 + 0.15 * pulse);
             const glint = coreR + 6;
             return (
-              <G key={idn.id} opacity={isSel ? 1 : dim ? 0.34 : 1} onPress={() => focusNode(idn)}>
+              <G key={idn.id} opacity={isSel ? 1 : dim ? 0.34 : 1} onPress={interactive ? () => focusNode(idn) : undefined}>
                 {/* intention halo */}
                 <Circle cx={sx} cy={sy} r={haloR} fill="none" stroke={c.color} strokeWidth={isSel ? 1.6 : 1} strokeOpacity="0.42" strokeDasharray="2 5" />
                 {/* soft glow */}
@@ -325,7 +326,7 @@ export default function ConstellationViz({
       {/* focused-star detail — only when uncontrolled (e.g. onboarding reveal);
           in the app the panel is portaled to the root so it floats above the
           tab bar regardless of card height / scroll. */}
-      {!controlled && selIdn && (
+      {!controlled && interactive && selIdn && (
         <View
           style={[
             {
