@@ -1,4 +1,4 @@
-# Handoff: Cosmo — Identity-Balance App (Onboarding + Drift Tracking)
+# Cosmo — Identity-Balance App (Onboarding + Drift Tracking)
 
 ## Overview
 **Cosmo** (internal design-system codename *MOSAIC*) is a mobile app that reframes time management around **who you want to become** rather than a to-do list. The user defines a set of **identities** ("Writer", "Reader", "Engineer", "Musician", "Painter", …), declares how much of their time each one *deserves* (intention), logs sessions as they live, and the app visualizes the gap between intention and reality as an orbiting "cosmos" plus a set of balance metrics.
