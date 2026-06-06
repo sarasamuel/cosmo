@@ -1,12 +1,13 @@
 /* Cosmo — app root. Loads fonts, mounts the store, and routes between the
    onboarding flow and the main tabbed shell. */
 import React from 'react';
-import { View } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StoreProvider, useStore, useTheme } from './src/store/Store';
-import { useAppFonts } from './src/theme/fonts';
+import { useAppFonts, serif, sans } from './src/theme/fonts';
+import ErrorBoundary from './src/components/ErrorBoundary';
 
 import Backdrop from './src/components/Backdrop';
 import Starfield from './src/components/Starfield';
@@ -65,16 +66,39 @@ function Root() {
   );
 }
 
+/* Full-screen crash fallback — deliberately self-contained (no store/theme,
+   which may be the thing that threw). Fonts are already loaded by this point. */
+function AppCrash({ onRetry }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: '#0a0a15', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+      <Text style={{ fontFamily: serif(500), fontSize: 26, color: '#eef0fb', textAlign: 'center', marginBottom: 10 }}>
+        Something went off course
+      </Text>
+      <Text style={{ fontFamily: sans(500), fontSize: 15, color: '#a9a8c6', textAlign: 'center', lineHeight: 22, marginBottom: 28 }}>
+        The app hit an unexpected error. Your data is saved — try again.
+      </Text>
+      <Pressable
+        onPress={onRetry}
+        style={({ pressed }) => ({ backgroundColor: '#eef0fb', borderRadius: 999, paddingVertical: 16, paddingHorizontal: 40, opacity: pressed ? 0.85 : 1 })}
+      >
+        <Text style={{ fontFamily: sans(600), fontSize: 16, color: '#0a0a15' }}>Try again</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function App() {
   const [fontsLoaded] = useAppFonts();
   if (!fontsLoaded) {
     return <View style={{ flex: 1, backgroundColor: '#0a0a15' }} />;
   }
   return (
-    <SafeAreaProvider>
-      <StoreProvider>
-        <Root />
-      </StoreProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary fallback={(err, reset) => <AppCrash onRetry={reset} />}>
+      <SafeAreaProvider>
+        <StoreProvider>
+          <Root />
+        </StoreProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

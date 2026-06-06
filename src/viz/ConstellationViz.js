@@ -6,7 +6,7 @@
    per-star radius, slot order kept so edges never cross), centered on the card,
    each pulsing in place on its own seeded rhythm. The intention ring pulses in
    lockstep so the gap between core and ring stays constant. Tap a star to focus. */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
 import Svg, { Circle, Line, Text as SvgText, G, Rect } from 'react-native-svg';
 import { useTheme } from '../store/Store';
@@ -143,22 +143,56 @@ export default function ConstellationViz({
   const selectedId = controlled ? focusedId || null : localSel;
 
   const n = identities.length;
-  const fieldRef = useRef(null); // regenerated below, keyed on the computed height
 
-  const mpRef = useRef(null);
-  if (!mpRef.current || mpRef.current.n !== n) mpRef.current = { n, mp: motionParams(n, 7) };
-  const mp = mpRef.current.mp;
+  // Static layout (per-star params, positions, MST edges, height, starfield)
+  // depends only on the identity count — compute it once per count, NOT every
+  // animation frame. The rAF clock below drives only each star's pulse.
+  const geom = useMemo(() => {
+    const mp = motionParams(n, 7);
+    const kk = Math.sqrt(n / 5); // 1 at 5 identities
+    const RADX = Math.min(205, 150 * kk); // horizontal radius (capped to card width)
+    const RADY = Math.min(300, 150 * kk); // vertical radius
+    // sunflower scatter (phyllotaxis) + seeded jitter, re-centered on the origin
+    const raw = Array.from({ length: n }, (_, i) => {
+      const m = mp[i];
+      const rr = Math.sqrt((i + 0.5) / n) * m.jr;
+      const theta = i * GOLDEN + m.jt;
+      return { x: Math.cos(theta) * RADX * rr, y: Math.sin(theta) * RADY * rr };
+    });
+    const cen = raw.reduce((a, p) => ({ x: a.x + p.x / n, y: a.y + p.y / n }), { x: 0, y: 0 });
+    const rel = raw.map((p) => ({ x: p.x - cen.x, y: p.y - cen.y }));
+    const edges = constellationEdges(rel); // branching tree (+ hub loops past a threshold)
+    let minY = Infinity;
+    let maxY = -Infinity;
+    rel.forEach((p) => {
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    });
+    const topPad = 38;
+    const botPad = 70;
+    const H = Math.max(360, Math.round(maxY - minY + topPad + botPad));
+    const field = bgStars(Math.round((66 * H) / BASE_H), W, H, 99);
+    return { mp, rel, edges, H, cx: CX, cy: Math.round(-minY + topPad), field };
+  }, [n]);
+  const { mp, rel, edges, H, cx, cy, field } = geom;
 
   const fillOf = (idn) =>
     idn.desired > 0 ? Math.max(0, Math.min(1, idn.actual / idn.desired)) : idn.actual > 0 ? 1 : 0;
 
-  // animation clock — each star reads its own breath from it
+  // animation clock — each star reads its own breath from it. Guarded so a throw
+  // stops the loop (and logs once) rather than recurring uncaught every frame.
   useEffect(() => {
     let raf;
     let t0 = null;
     const loop = (ts) => {
-      if (t0 == null) t0 = ts;
-      setNow((ts - t0) / 1000);
+      try {
+        if (t0 == null) t0 = ts;
+        setNow((ts - t0) / 1000);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('ConstellationViz animation loop error:', e);
+        return;
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -178,45 +212,8 @@ export default function ConstellationViz({
     else setLocalSel(idn.id);
   };
 
-  // Compact, bounded layout: scale the figure radius with √n (capped) so star
-  // density stays roughly constant and the card height grows slowly then
-  // plateaus instead of sprawling.
-  const k = Math.sqrt(n / 5); // 1 at 5 identities
-  const RADX = Math.min(205, 150 * k); // horizontal radius (capped to card width)
-  const RADY = Math.min(300, 150 * k); // vertical radius
-
-  // Sunflower scatter (phyllotaxis) + small seeded jitter — a natural scatter,
-  // not an even ring. Then re-center on the centroid (origin).
-  const raw = identities.map((idn, i) => {
-    const m = mp[i];
-    const rr = Math.sqrt((i + 0.5) / n) * m.jr;
-    const theta = i * GOLDEN + m.jt;
-    return { x: Math.cos(theta) * RADX * rr, y: Math.sin(theta) * RADY * rr };
-  });
-  const cen = raw.reduce((a, p) => ({ x: a.x + p.x / n, y: a.y + p.y / n }), { x: 0, y: 0 });
-  const rel = raw.map((p) => ({ x: p.x - cen.x, y: p.y - cen.y }));
-  // wire the stars into a branching tree (+ hub loops past a threshold)
-  const edges = constellationEdges(rel);
-
-  // measure vertical extent and grow the viewBox to fit (room for glow + 2 labels)
-  let minY = Infinity;
-  let maxY = -Infinity;
-  rel.forEach((p) => {
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  });
-  const topPad = 38;
-  const botPad = 70;
-  const H = Math.max(360, Math.round(maxY - minY + topPad + botPad));
-  const cx = CX;
-  const cy = Math.round(-minY + topPad);
-
-  // background star density scales with height; re-key the field on H
-  if (!fieldRef.current || fieldRef.current.key !== H) {
-    fieldRef.current = { key: H, stars: bgStars(Math.round((66 * H) / BASE_H), W, H, 99) };
-  }
-  const field = fieldRef.current.stars;
-
+  // Per-frame: only the pulse depends on the clock (and the selected star calms);
+  // positions/edges come from the memoized geometry above.
   const proj = identities.map((idn, i) => {
     const m = mp[i];
     const calm = idn.id === selectedId ? 0.15 : 1;

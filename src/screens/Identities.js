@@ -7,6 +7,7 @@ import { useStore, useTheme } from '../store/Store';
 import { Card, Glyph, Eyebrow, SectionTitle, Button, Pill } from '../components/primitives';
 import Icon from '../components/Icon';
 import DualBar from '../components/DualBar';
+import { useScreenPad } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
 export default function Identities() {
@@ -14,14 +15,15 @@ export default function Identities() {
   const { identities, week, weekPlanned, openPlan, openAdd, restart, theme, setTheme } = useStore();
   const total = identities.reduce((s, i) => s + i.desired, 0);
   const maxPlan = Math.max(...identities.map((i) => i.desired), 1);
+  const pad = useScreenPad();
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 36, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
       <View style={{ paddingTop: 8 }}>
         <Eyebrow>Your identities</Eyebrow>
         <Text style={{ fontFamily: serif(500), fontSize: 34, color: t.ink, marginTop: 8, marginBottom: 4 }}>The people you’re becoming</Text>
         <Text style={{ fontSize: 15.5, color: t.inkSoft, lineHeight: 23 }}>
-          You no longer fix one balance forever. Each week, you choose anew how much of yourself each identity deserves.
+          You don't fix one balance forever. Each week, you choose anew how much of yourself each identity deserves.
         </Text>
       </View>
 

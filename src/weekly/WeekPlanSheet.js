@@ -7,6 +7,7 @@ import Slider from '@react-native-community/slider';
 import { useStore, useTheme } from '../store/Store';
 import { WEEKS } from '../data/data';
 import { Glyph, Button, Card, Eyebrow } from '../components/primitives';
+import { SPACING } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
 export default function WeekPlanSheet() {
@@ -47,7 +48,9 @@ export default function WeekPlanSheet() {
     return r ? r.actual : null;
   };
   const [start, end] = week.label.split(' – ');
-  const sheetMax = height * 0.92;
+  // cap around two-thirds so the sheet rises to ~midway and leaves a comfortable
+  // strip of scrim above it to tap-to-close (content scrolls inside if needed)
+  const sheetMax = height * 0.66;
 
   return (
     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 42 }}>
@@ -66,7 +69,7 @@ export default function WeekPlanSheet() {
             backgroundColor: t.surface,
             borderTopLeftRadius: 34,
             borderTopRightRadius: 34,
-            paddingHorizontal: 40,
+            paddingHorizontal: SPACING.sheetPad,
             paddingTop: 16,
             paddingBottom: 44,
             transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [sheetMax + 60, 0] }) }],

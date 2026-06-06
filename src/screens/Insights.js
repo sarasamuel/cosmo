@@ -6,6 +6,7 @@ import { INSIGHTS, COACH } from '../data/data';
 import { Card, Eyebrow, Pill } from '../components/primitives';
 import Icon from '../components/Icon';
 import CoachNote from '../components/CoachNote';
+import { useScreenPad } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
 const TONE = {
@@ -19,9 +20,10 @@ export default function Insights() {
   const { t } = useTheme();
   const { identities, drift, openLog } = useStore();
   const find = (id) => identities.find((i) => i.id === id) || drift;
+  const pad = useScreenPad();
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 36, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
       <View style={{ paddingTop: 8 }}>
         <Eyebrow>Rebalancing</Eyebrow>
         <Text style={{ fontFamily: serif(500), fontSize: 34, color: t.ink, marginTop: 8, marginBottom: 4 }}>Insights</Text>

@@ -6,6 +6,7 @@ import { useStore, useTheme } from '../store/Store';
 import { Glyph, Button, Chip } from './primitives';
 import Icon from './Icon';
 import MinuteDial from './MinuteDial';
+import { BREAKPOINT, SPACING } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
 const PRESETS = [15, 30, 45, 60, 90];
@@ -13,7 +14,8 @@ const PRESETS = [15, 30, 45, 60, 90];
 export default function LogSheet() {
   const { t, colorsFor } = useTheme();
   const { logOpen: open, logPreset: preset, closeLog: onClose, commitLog: onCommit, logTargets: identities } = useStore();
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const twoCol = width >= BREAKPOINT.twoCol; // phones: one card per row so names never wrap
 
   const [step, setStep] = useState(1);
   const [sel, setSel] = useState(null);
@@ -67,7 +69,7 @@ export default function LogSheet() {
             backgroundColor: t.surface,
             borderTopLeftRadius: 34,
             borderTopRightRadius: 34,
-            paddingHorizontal: 40,
+            paddingHorizontal: SPACING.sheetPad,
             paddingTop: 16,
             paddingBottom: 44,
             transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [sheetMax + 60, 0] }) }],
@@ -89,10 +91,10 @@ export default function LogSheet() {
                   return (
                     <Pressable
                       key={i.id}
-                      onPress={() => setSel(i)}
+                      onPress={() => setSel(on ? null : i)}
                       style={[
                         {
-                          width: '47%',
+                          width: twoCol ? '47%' : '100%',
                           flexGrow: 1,
                           flexDirection: 'row',
                           alignItems: 'center',
@@ -102,15 +104,19 @@ export default function LogSheet() {
                           borderWidth: 1.5,
                           borderColor: on ? c.color : t.line,
                           backgroundColor: on ? c.soft : t.surface,
-                          transform: [{ scale: on ? 1.03 : 1 }],
+                          // only "pop" in the 2-col layout; a full-width card scaled
+                          // up would bulge past the sheet's side padding
+                          transform: [{ scale: on && twoCol ? 1.03 : 1 }],
                         },
                         t.shadow.sm,
                       ]}
                     >
                       <Glyph char={i.glyph} size={on ? 52 : 44} fontSize={on ? 25 : 21} color={c.color} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 17, fontFamily: sans(600), color: t.ink }}>{i.name}</Text>
-                        <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: on ? c.color : t.inkFaint }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={{ fontSize: 17, fontFamily: sans(600), color: t.ink }}>
+                          {i.name}
+                        </Text>
+                        <Text numberOfLines={1} style={{ fontSize: 12.5, fontFamily: sans(600), color: on ? c.color : t.inkFaint }}>
                           {i.lastActiveDays === 0 ? 'active today' : `${i.lastActiveDays}d since last`}
                         </Text>
                       </View>

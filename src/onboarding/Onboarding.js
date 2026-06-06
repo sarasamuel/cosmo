@@ -16,6 +16,7 @@ import ConstellationViz from '../viz/ConstellationViz';
 import OnbCadence from './OnbCadence';
 import OnbAllocate from './OnbAllocate';
 import { CADENCE, FREE_TIME, personaColor } from './helpers';
+import { SPACING, bleed } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
 function WelcomeConstellation() {
@@ -75,7 +76,7 @@ export default function Onboarding() {
       <Starfield count={60} />
       <StatusBar />
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 44 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingHorizontal: SPACING.onboardingPad }} showsVerticalScrollIndicator={false}>
         {/* STEP 0 — welcome */}
         {step === 0 && (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -284,7 +285,9 @@ export default function Onboarding() {
               })}
             </View>
 
-            <View style={{ width: '100%', marginVertical: 12 }}>
+            {/* full-bleed: cancel the screen's 44px padding so the viz spans the
+                whole width (it measures its own container, so it stays responsive) */}
+            <View style={{ alignSelf: 'stretch', ...bleed(SPACING.onboardingPad), marginVertical: 12 }}>
               {form === 'constellation' ? (
                 <ConstellationViz identities={IDENTITIES} allowLog={false} interactive={false} name={USER.name} />
               ) : (

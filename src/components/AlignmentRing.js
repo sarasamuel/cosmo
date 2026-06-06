@@ -17,10 +17,15 @@ export default function AlignmentRing({ value, size = 132, stroke = 11, label = 
     let start;
     const from = 0;
     const step = (ts) => {
-      if (!start) start = ts;
-      const k = Math.min(1, (ts - start) / 1100);
-      setShown(Math.round(from + (value - from) * (1 - Math.pow(1 - k, 3))));
-      if (k < 1) raf.current = requestAnimationFrame(step);
+      try {
+        if (!start) start = ts;
+        const k = Math.min(1, (ts - start) / 1100);
+        setShown(Math.round(from + (value - from) * (1 - Math.pow(1 - k, 3))));
+        if (k < 1) raf.current = requestAnimationFrame(step);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('AlignmentRing animation error:', e);
+      }
     };
     raf.current = requestAnimationFrame(step);
     return () => raf.current && cancelAnimationFrame(raf.current);

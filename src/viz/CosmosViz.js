@@ -7,7 +7,7 @@
    - SVG <filter> glow is replaced by a translucent halo circle (react-native-svg
      filters are unreliable on the new architecture).
    - Drag uses PanResponder; node taps use react-native-svg onPress. */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, PanResponder } from 'react-native';
 import Svg, { Defs, RadialGradient, Stop, Circle, Path, Line, Text as SvgText, G, Rect } from 'react-native-svg';
 import { useTheme } from '../store/Store';
@@ -109,47 +109,62 @@ export default function CosmosViz({
 
   const st = useRef({ a: 0.3, v: 0, drag: false, lastX: 0, sel: null, target: null, grow: 0 }).current;
 
-  // keep the rotation ref in sync when focus is cleared/changed externally
-  // (e.g. the root panel's ✕, or a tab change)
-  useEffect(() => {
-    if (!controlled) return;
-    st.sel = focusedId || null;
-    if (!focusedId) st.target = null;
-  }, [controlled, focusedId, st]);
-
   const ptsRef = useRef(null);
   if (!ptsRef.current || ptsRef.current.n !== identities.length) {
     ptsRef.current = { n: identities.length, pts: spherePositions(identities.length, R) };
   }
   const pts = ptsRef.current.pts;
 
+  // `selectedId` is the single source of truth for focus. The rAF loop can't read
+  // React state, so mirror it into the ref here (one place) and aim the rotation
+  // at the focused planet — derived from selectedId, not set by handlers.
+  useEffect(() => {
+    st.sel = selectedId;
+    if (selectedId == null) {
+      st.target = null;
+      return;
+    }
+    const i = identities.findIndex((x) => x.id === selectedId);
+    if (i >= 0) {
+      const p = pts[i];
+      st.target = Math.atan2(p.z, p.x) - Math.PI / 2; // rotate it to the front
+    }
+  }, [selectedId, identities, pts, st]);
+
   const fieldRef = useRef(null);
   if (!fieldRef.current) fieldRef.current = makeStars(66, W, H, 99);
   const field = fieldRef.current;
 
-  // animation loop
+  // animation loop — guarded so a throw inside the frame stops the loop (and
+  // logs once) instead of going uncaught past the error boundary every frame
   useEffect(() => {
     let raf;
     const loop = () => {
-      if (st.target != null) {
-        let diff = st.target - st.a;
-        while (diff > Math.PI) diff -= 2 * Math.PI;
-        while (diff < -Math.PI) diff += 2 * Math.PI;
-        st.a += diff * 0.14;
-        st.v = 0;
-        if (Math.abs(diff) < 0.0015) {
-          st.a = st.target;
-          st.target = null;
+      try {
+        if (st.target != null) {
+          let diff = st.target - st.a;
+          while (diff > Math.PI) diff -= 2 * Math.PI;
+          while (diff < -Math.PI) diff += 2 * Math.PI;
+          st.a += diff * 0.14;
+          st.v = 0;
+          if (Math.abs(diff) < 0.0015) {
+            st.a = st.target;
+            st.target = null;
+          }
+        } else if (!st.drag) {
+          const auto = st.sel ? 0 : SPIN;
+          st.a += auto + st.v;
+          st.v *= 0.92;
         }
-      } else if (!st.drag) {
-        const auto = st.sel ? 0 : SPIN;
-        st.a += auto + st.v;
-        st.v *= 0.92;
+        const goalGrow = st.sel ? 1 : 0;
+        st.grow += (goalGrow - st.grow) * 0.16;
+        setAngle(st.a);
+        setGrow(st.grow);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('CosmosViz animation loop error:', e);
+        return; // stop scheduling further frames
       }
-      const goalGrow = st.sel ? 1 : 0;
-      st.grow += (goalGrow - st.grow) * 0.16;
-      setAngle(st.a);
-      setGrow(st.grow);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -183,23 +198,12 @@ export default function CosmosViz({
     })
   ).current;
 
-  const focusNode = (idn, i) => {
-    if (st.sel === idn.id) {
-      deselect();
-      return;
-    }
-    const p = pts[i];
-    st.target = Math.atan2(p.z, p.x) - Math.PI / 2; // rotate it to the front
-    st.sel = idn.id;
-    if (controlled) onFocus(idn);
-    else setLocalSel(idn.id);
-  };
-  const deselect = () => {
-    st.sel = null;
-    st.target = null;
-    if (controlled) onRelease && onRelease();
-    else setLocalSel(null);
-  };
+  // handlers only change the logical selection; the effect above mirrors it into
+  // the rAF ref and sets the rotation target. (st.sel/st.target are derived, not
+  // owned here.)
+  const select = (idn) => (controlled ? onFocus(idn) : setLocalSel(idn.id));
+  const deselect = () => (controlled ? onRelease && onRelease() : setLocalSel(null));
+  const focusNode = (idn) => (selectedId === idn.id ? deselect() : select(idn));
 
   const proj = identities.map((idn, i) => {
     const pr = projectPoint(pts[i], angle, TILT);
@@ -219,22 +223,24 @@ export default function CosmosViz({
 
   // The core disc is small (~68px). Show the first name, scaled to fit its usable
   // width; if even that won't fit at a legible floor, fall back to initials
-  // ("Alexandria" → "A", "Ada Grace Lovelace" → "AGL").
-  let sunLabel = '';
-  let sunFont = 25;
-  if (name) {
-    const usable = 56;
-    const tokens = name.trim().split(/\s+/).filter(Boolean);
-    const first = tokens[0] || name;
-    const widthAt = (str, fs) => str.length * fs * 0.52; // Newsreader italic ≈ 0.52em/char
-    sunLabel = first;
-    while (sunFont > 12 && widthAt(sunLabel, sunFont) > usable) sunFont -= 1;
-    if (widthAt(sunLabel, sunFont) > usable) {
-      sunLabel = tokens.map((tk) => tk[0]).join('').slice(0, 3).toUpperCase();
-      sunFont = 19;
+  // ("Alexandria" → "A", "Ada Grace Lovelace" → "AGL"). Depends only on `name`.
+  const { sunLabel, sunFont, sunY } = useMemo(() => {
+    let label = '';
+    let fs = 25;
+    if (name) {
+      const usable = 56;
+      const tokens = name.trim().split(/\s+/).filter(Boolean);
+      const first = tokens[0] || name;
+      const widthAt = (str, f) => str.length * f * 0.52; // Newsreader italic ≈ 0.52em/char
+      label = first;
+      while (fs > 12 && widthAt(label, fs) > usable) fs -= 1;
+      if (widthAt(label, fs) > usable) {
+        label = tokens.map((tk) => tk[0]).join('').slice(0, 3).toUpperCase();
+        fs = 19;
+      }
     }
-  }
-  const sunY = CY + sunFont * 0.34;
+    return { sunLabel: label, sunFont: fs, sunY: CY + fs * 0.34 };
+  }, [name]);
 
   return (
     <View style={{ width: '100%' }} onLayout={(e) => setBoxW(e.nativeEvent.layout.width)} {...pan.panHandlers}>
@@ -323,7 +329,7 @@ export default function CosmosViz({
               <G
                 key={idn.id}
                 opacity={op}
-                onPress={interactive ? () => focusNode(idn, proj.findIndex((p) => p.idn.id === idn.id)) : undefined}
+                onPress={interactive ? () => focusNode(idn) : undefined}
               >
                 <Circle cx={sx} cy={sy} r={base * 1.5} fill={c.color} opacity={(isSel ? 0.28 : 0.18) * (isSel ? 1 : depth)} />
                 <Circle

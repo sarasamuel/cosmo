@@ -8,9 +8,9 @@ import { REFLECTION, WEEKS, MONTH } from '../data/data';
 import { Card, Glyph, Eyebrow, SectionTitle, Pill } from '../components/primitives';
 import Icon from '../components/Icon';
 import AlignmentRing from '../components/AlignmentRing';
-import WeekScoreTrend from '../weekly/WeekScoreTrend';
 import PastWeeks from '../weekly/PastWeeks';
 import ActivityTracker from '../weekly/ActivityTracker';
+import { useScreenPad } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
 function StackedBar({ items, field, label, colorsFor }) {
@@ -42,10 +42,10 @@ export default function Reflect() {
   const { identities, drift } = useStore();
   const delta = REFLECTION.aligned - REFLECTION.alignedLast;
   const lived = [...identities, drift];
-  const avg = Math.round(WEEKS.reduce((s, w) => s + w.aligned, 0) / WEEKS.length);
+  const pad = useScreenPad();
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 36, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
       <View style={{ paddingTop: 8 }}>
         <Eyebrow>Weekly reflection</Eyebrow>
         <Text style={{ fontFamily: serif(500), fontSize: 34, color: t.ink, marginTop: 8, marginBottom: 2 }}>How the weeks add up</Text>
@@ -67,15 +67,6 @@ export default function Reflect() {
             Closer than last week, though still drifting. Your intention and your hours are slowly converging.
           </Text>
         </View>
-      </Card>
-
-      {/* alignment over time */}
-      <Card style={{ marginTop: 18, paddingHorizontal: 24, paddingVertical: 22 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 18 }}>
-          <SectionTitle>Alignment over time</SectionTitle>
-          <Text style={{ fontSize: 12.5, fontFamily: sans(700), color: t.inkFaint }}>{avg}% avg</Text>
-        </View>
-        <WeekScoreTrend weeks={WEEKS} />
       </Card>
 
       {/* per-week breakdown — plan vs lived */}

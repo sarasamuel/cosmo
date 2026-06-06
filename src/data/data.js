@@ -35,6 +35,9 @@ export function fmtMins(m) {
   return h + 'h ' + mm + 'm';
 }
 
+// `actual` is NOT stored here — it is always derived as driftSum(apps) + spill
+// (see driftActual). `spill` is the only non-app contribution: rest logged beyond
+// the Relaxation allowance overflows into Drift.
 export const DRIFT = {
   id: 'drift',
   name: 'Drift',
@@ -42,9 +45,12 @@ export const DRIFT = {
   palette: 'drift',
   hue: 280,
   desired: 0,
-  actual: driftSum(DRIFT_APPS),
+  spill: 0,
   apps: DRIFT_APPS,
 };
+
+// The single source of truth for Drift's lived %: tracked apps + relax overflow.
+export const driftActual = (drift) => Math.min(100, driftSum(drift.apps) + (drift.spill || 0));
 
 // Relaxation — an *intended* allowance of rest. Unlike Drift, the user plans for
 // it: `desired` is the share of the week set aside to relax guilt-free. Time
@@ -71,16 +77,6 @@ export const CATALOG = [
   'Relaxation Time',
 ];
 
-// map catalog names -> canonical palette key (so the 5 seeds keep signature colors)
-export const NAME_PALETTE = {
-  Writer: 'writer',
-  Reader: 'reader',
-  Engineer: 'engineer',
-  Musician: 'musician',
-  Painter: 'painter',
-  'Relaxation Time': 'relax',
-};
-
 // recent logged sessions (most recent first)
 export const SESSIONS = [
   { id: 'engineer', label: 'Coding', mins: 90, when: 'Today · 9:10 AM' },
@@ -91,14 +87,6 @@ export const SESSIONS = [
   { id: 'painter', label: 'Watercolor', mins: 60, when: 'May 30 · 4:30 PM' },
 ];
 
-// weekly trend, fraction of each day given to the identity (for sparklines)
-export const TREND = {
-  writer: [0.3, 0.1, 0.0, 0.15, 0.12, 0.05, 0.1],
-  reader: [0.1, 0.05, 0.2, 0.0, 0.08, 0.06, 0.04],
-  engineer: [0.2, 0.4, 0.45, 0.35, 0.3, 0.22, 0.18],
-  musician: [0.05, 0.0, 0.0, 0.1, 0.0, 0.06, 0.05],
-  painter: [0.0, 0.0, 0.05, 0.0, 0.0, 0.0, 0.02],
-};
 export const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 // rebalancing insights

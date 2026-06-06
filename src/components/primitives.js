@@ -122,7 +122,9 @@ export function Chip({ style, textStyle, children, onPress, selected, bg, color,
           borderRadius: 999,
           paddingVertical: 12,
           paddingHorizontal: 18,
-          transform: [{ scale: pressed ? 0.97 : selected ? 1.08 : 1 }],
+          // only the inward press scale — a selected "grow" would push wide chips
+          // past the container padding in tight wrap rows
+          transform: [{ scale: pressed ? 0.97 : 1 }],
         },
         selected ? t.shadow.md : null,
         style,

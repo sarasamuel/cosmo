@@ -8,6 +8,7 @@ import { CATALOG, assignHue } from '../data/data';
 import { oklch } from '../lib/color';
 import { Button, Chip } from './primitives';
 import Icon from './Icon';
+import { SPACING } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
 const RELAX_NAME = 'Relaxation Time'; // handled separately, never an "identity"
@@ -90,7 +91,7 @@ export default function AddIdentitySheet() {
             backgroundColor: t.surface,
             borderTopLeftRadius: 34,
             borderTopRightRadius: 34,
-            paddingHorizontal: 40,
+            paddingHorizontal: SPACING.sheetPad,
             paddingTop: 16,
             paddingBottom: 44,
             transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [sheetMax + 60, 0] }) }],

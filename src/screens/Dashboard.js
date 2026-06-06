@@ -15,6 +15,8 @@ import DualBar from '../components/DualBar';
 import AlignmentRing from '../components/AlignmentRing';
 import CoachNote from '../components/CoachNote';
 import WeekPlanBanner from '../weekly/WeekPlanBanner';
+import ErrorBoundary from '../components/ErrorBoundary';
+import { useScreenPad, useBreakpoints, SPACING, bleed } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
 function LegendItem({ filled, label, dk }) {
@@ -43,6 +45,7 @@ function CosmosHero({ identities, onTap, name }) {
   // `form` is shared via the store so the onboarding reveal and the Portfolio
   // agree on which visualization is the default (persisted to AsyncStorage there).
   const { form, setForm, cosmosFocus, focusCosmos, clearCosmos } = useStore();
+  const { showHint } = useBreakpoints(); // hide the interaction hint when there isn't room
   const pick = (f) => {
     setForm(f);
     clearCosmos(); // release focus when swapping the mounted viz
@@ -52,10 +55,12 @@ function CosmosHero({ identities, onTap, name }) {
 
   return (
     <View style={{ borderRadius: dk.radii.lg, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(160,160,230,0.14)' }}>
-      <LinearGradient colors={['#1b1838', '#0c0b1c', '#07060f']} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ paddingHorizontal: 18, paddingTop: 18, paddingBottom: 16 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <LinearGradient colors={['#1b1838', '#0c0b1c', '#07060f']} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ paddingHorizontal: SPACING.cosmosCardPad, paddingTop: 18, paddingBottom: 16 }}>
+        {/* header wraps: on narrow screens the toggle drops below the eyebrow
+            (right-aligned) and the hint is hidden, so nothing clips */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', rowGap: 10, columnGap: 10 }}>
           <Text style={{ fontSize: 13, fontFamily: sans(600), letterSpacing: 2.1, textTransform: 'uppercase', color: dk.inkFaint }}>Your cosmos</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
             <View style={{ flexDirection: 'row', backgroundColor: dk.surface3, borderRadius: 999, padding: 2, gap: 2, borderWidth: 1, borderColor: dk.line2 }}>
               {[
                 { f: 'constellation', label: 'Constellation' },
@@ -69,14 +74,31 @@ function CosmosHero({ identities, onTap, name }) {
                 );
               })}
             </View>
-            <Text style={{ fontSize: 12, fontFamily: sans(600), color: dk.inkFaint }}>✦ {isConst ? 'tap a star' : 'drag to rotate'}</Text>
+            {showHint && (
+              <Text style={{ fontSize: 12, fontFamily: sans(600), color: dk.inkFaint }}>✦ {isConst ? 'tap a star' : 'drag to rotate'}</Text>
+            )}
           </View>
         </View>
-        {isConst ? (
-          <ConstellationViz identities={identities} onLog={onTap} name={name} themeObj={dk} {...focusProps} />
-        ) : (
-          <CosmosViz identities={identities} onLog={onTap} name={name} themeObj={dk} {...focusProps} />
-        )}
+        {/* let the viz use the full card width (header + legend stay padded) so
+            it isn't cramped on narrow phones. A boundary keeps a viz render error
+            contained to this card instead of white-screening the app. */}
+        <View style={bleed(SPACING.cosmosCardPad)}>
+          <ErrorBoundary
+            fallback={
+              <View style={{ height: 220, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30 }}>
+                <Text style={{ fontFamily: sans(600), fontSize: 14, color: dk.inkFaint, textAlign: 'center' }}>
+                  Couldn’t render your cosmos right now.
+                </Text>
+              </View>
+            }
+          >
+            {isConst ? (
+              <ConstellationViz identities={identities} onLog={onTap} name={name} themeObj={dk} {...focusProps} />
+            ) : (
+              <CosmosViz identities={identities} onLog={onTap} name={name} themeObj={dk} {...focusProps} />
+            )}
+          </ErrorBoundary>
+        </View>
         <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 18, marginTop: 2 }}>
           <LegendItem filled label={isConst ? 'bright = your time' : 'filled = your time'} dk={dk} />
           <LegendItem filled={false} label="ring = intention" dk={dk} />
@@ -91,6 +113,7 @@ export default function Dashboard() {
   const { identities, drift, relax, sessions, align, openLog, toggleDriftApp, week, weekPlanned, openPlan } = useStore();
   const [driftOpen, setDriftOpen] = useState(false);
   const relaxC = colorsFor(relax);
+  const pad = useScreenPad();
 
   const lead = [...identities].sort((a, b) => b.actual - b.desired - (a.actual - a.desired))[0];
   const lag = [...identities].sort((a, b) => a.actual - a.desired - (b.actual - b.desired))[0];
@@ -100,7 +123,7 @@ export default function Dashboard() {
   const driftC = colorsFor(drift);
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 36, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
       <View style={{ paddingTop: 8 }}>
         <Eyebrow>{COACH.date}</Eyebrow>
         <Text style={{ fontFamily: serif(500), fontSize: 38, lineHeight: 40, color: t.ink, marginTop: 8, marginBottom: 6, letterSpacing: -0.4 }}>
