@@ -12,7 +12,7 @@ import { serif, sans } from '../theme/fonts';
 
 export default function Identities() {
   const { t, colorsFor } = useTheme();
-  const { identities, week, weekPlanned, openPlan, openAdd, restart, theme, setTheme } = useStore();
+  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, restart, theme, setTheme } = useStore();
   const total = identities.reduce((s, i) => s + i.desired, 0);
   const maxPlan = Math.max(...identities.map((i) => i.desired), 1);
   const pad = useScreenPad();
@@ -42,7 +42,11 @@ export default function Identities() {
           {identities.map((i) => {
             const c = colorsFor(i);
             return (
-              <View key={i.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <Pressable
+                key={i.id}
+                onPress={() => openDetail(i)}
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, opacity: pressed ? 0.6 : 1 })}
+              >
                 <Glyph char={i.glyph} size={32} fontSize={15} color={c.color} />
                 <Text style={{ width: 86, fontSize: 15.5, fontFamily: sans(600), color: t.ink }}>{i.name}</Text>
                 <View style={{ flex: 1 }}>
@@ -52,7 +56,7 @@ export default function Identities() {
                   {i.desired}
                   <Text style={{ fontSize: 12, color: t.inkFaint }}>%</Text>
                 </Text>
-              </View>
+              </Pressable>
             );
           })}
         </View>

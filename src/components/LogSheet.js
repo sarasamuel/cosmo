@@ -1,7 +1,7 @@
 /* Log-session bottom sheet, ported from logsheet.jsx. Step 1 picks an identity,
    step 2 sets minutes (dial + presets). Slides up over the app with a scrim. */
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { Animated, View, Text, TextInput, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { useStore, useTheme } from '../store/Store';
 import { Glyph, Button, Chip } from './primitives';
 import Icon from './Icon';
@@ -20,6 +20,7 @@ export default function LogSheet() {
   const [step, setStep] = useState(1);
   const [sel, setSel] = useState(null);
   const [mins, setMins] = useState(30);
+  const [note, setNote] = useState(''); // optional session title/note
   const [mounted, setMounted] = useState(false);
 
   const slide = useRef(new Animated.Value(0)).current; // 0 hidden, 1 shown
@@ -34,6 +35,7 @@ export default function LogSheet() {
         setStep(1);
       }
       setMins(30);
+      setNote('');
       setMounted(true);
     }
     Animated.timing(slide, {
@@ -79,7 +81,7 @@ export default function LogSheet() {
       >
         <View style={{ width: 44, height: 5, borderRadius: 999, backgroundColor: t.line, alignSelf: 'center', marginBottom: 22 }} />
 
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {step === 1 && (
             <View>
               <Text style={{ fontFamily: serif(500), fontSize: 27, color: t.ink, marginBottom: 4 }}>What did you tend to?</Text>
@@ -174,7 +176,32 @@ export default function LogSheet() {
                 })}
               </View>
 
-              <Button onPress={() => onCommit(sel, mins)} style={{ backgroundColor: btnBg(sel) }} textStyle={{ color: '#fff' }}>
+              {/* optional note — becomes the session's title in Recent moments */}
+              <Text style={{ fontSize: 12, fontFamily: sans(700), letterSpacing: 1.2, textTransform: 'uppercase', color: t.inkFaint, marginBottom: 10 }}>
+                Note · <Text style={{ fontFamily: sans(600) }}>optional</Text>
+              </Text>
+              <TextInput
+                value={note}
+                onChangeText={setNote}
+                placeholder="e.g. Morning pages, chapter 3"
+                placeholderTextColor={t.inkFaint}
+                maxLength={80}
+                returnKeyType="done"
+                style={{
+                  borderWidth: 1.5,
+                  borderColor: t.line,
+                  borderRadius: t.radii.md,
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                  fontSize: 15.5,
+                  fontFamily: sans(500),
+                  color: t.ink,
+                  backgroundColor: t.surface,
+                  marginBottom: 24,
+                }}
+              />
+
+              <Button onPress={() => onCommit(sel, mins, note)} style={{ backgroundColor: btnBg(sel) }} textStyle={{ color: '#fff' }}>
                 Log {mins} minutes
               </Button>
               <Button variant="ghost" onPress={onClose} style={{ marginTop: 8 }}>

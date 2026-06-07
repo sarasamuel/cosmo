@@ -38,6 +38,7 @@ export function StoreProvider({ children }) {
   const [weekPlanned, setWeekPlanned] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [cosmosFocus, setCosmosFocus] = useState(null); // focused identity in the cosmos card
+  const [detail, setDetail] = useState(null); // identity whose full Detail screen is open (null = none)
   const [toast, setToast] = useState(null);
 
   // hydrate persisted prefs + the mutable domain state. storage.getItem logs and
@@ -119,8 +120,9 @@ export function StoreProvider({ children }) {
   }, []);
   const closeLog = useCallback(() => setLogOpen(false), []);
 
-  const commitLog = useCallback((idn, mins) => {
+  const commitLog = useCallback((idn, mins, note) => {
     const bump = Math.max(1, Math.round(mins / 12));
+    const title = (note || '').trim(); // optional session label typed in the log sheet
 
     // Relaxation: fill up to the allowance you set; the rest is honest Drift.
     if (idn.isRelax) {
@@ -133,7 +135,7 @@ export function StoreProvider({ children }) {
       // any overflow beyond the allowance becomes Drift, tracked as `spill` so it
       // survives app toggles (drift's `actual` is derived from apps + spill)
       if (spill > 0) setDrift((d) => ({ ...d, spill: (d.spill || 0) + spill }));
-      setSessions((s) => [{ id: 'relax', label: 'Relaxation', mins, when: 'Just now' }, ...s]);
+      setSessions((s) => [{ id: 'relax', label: title || 'Relaxation', mins, when: 'Just now' }, ...s]);
       setLogOpen(false);
       showToast({ kind: 'log', name: 'Relaxation', mins, idn, spill }, 2800);
       return;
@@ -159,7 +161,7 @@ export function StoreProvider({ children }) {
         ),
       };
     });
-    setSessions((s) => [{ id: idn.id, label: idn.name + ' session', mins, when: 'Just now' }, ...s]);
+    setSessions((s) => [{ id: idn.id, label: title || idn.name + ' session', mins, when: 'Just now' }, ...s]);
     setLogOpen(false);
     showToast({ kind: 'log', name: idn.name, mins, idn });
   }, [relax, showToast]);
@@ -184,10 +186,19 @@ export function StoreProvider({ children }) {
   const goTo = useCallback((t) => {
     setTab(t);
     setCosmosFocus(null); // release any focused cosmos star when changing tabs
+    setDetail(null); // leave the Detail screen when switching tabs
   }, []);
 
   const focusCosmos = useCallback((idn) => setCosmosFocus(idn), []);
   const clearCosmos = useCallback(() => setCosmosFocus(null), []);
+
+  // Open the full Detail screen for an identity (from the cosmos focus panel).
+  // Releasing the cosmos focus dismisses the floating panel as we navigate in.
+  const openDetail = useCallback((idn) => {
+    setCosmosFocus(null);
+    setDetail(idn);
+  }, []);
+  const closeDetail = useCallback(() => setDetail(null), []);
 
   // Add one or more identities by name (from the catalog or typed by the user).
   // Each gets the next palette hue far enough from every hue already in use, so
@@ -271,6 +282,9 @@ export function StoreProvider({ children }) {
       cosmosFocus,
       focusCosmos,
       clearCosmos,
+      detail,
+      openDetail,
+      closeDetail,
       setDesired,
       enter,
       restart,
@@ -283,7 +297,7 @@ export function StoreProvider({ children }) {
       relax, sessions, align, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
       toggleDriftApp, addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
-      focusCosmos, clearCosmos, setDesired, enter, restart, toast,
+      focusCosmos, clearCosmos, detail, openDetail, closeDetail, setDesired, enter, restart, toast,
     ]
   );
 

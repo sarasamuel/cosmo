@@ -11,9 +11,17 @@ import { Glyph, Pill } from './primitives';
 import Icon from './Icon';
 import { serif, sans } from '../theme/fonts';
 
+// "last tended" descriptor from days since the last logged session.
+function lastTended(days) {
+  if (days == null) return null;
+  if (days === 0) return 'tended today';
+  if (days === 1) return 'last tended yesterday';
+  return `last tended ${days}d ago`;
+}
+
 export default function CosmosFocusPanel() {
   const { t, colorsFor } = useTheme();
-  const { cosmosFocus, clearCosmos, openLog } = useStore();
+  const { cosmosFocus, clearCosmos, openLog, openDetail } = useStore();
   const insets = useSafeAreaInsets();
   const ty = useRef(new Animated.Value(8)).current;
 
@@ -31,6 +39,8 @@ export default function CosmosFocusPanel() {
     clearCosmos();
     openLog(idn);
   };
+  const openIt = () => openDetail(idn); // clears focus + routes to the Detail screen
+  const tended = lastTended(idn.lastActiveDays);
 
   return (
     <Animated.View
@@ -57,19 +67,23 @@ export default function CosmosFocusPanel() {
         t.shadow.md,
       ]}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Glyph char={idn.glyph} size={38} fontSize={18} color={c.color} />
-        <View>
-          <Text style={{ fontFamily: serif(500), fontSize: 20, color: t.ink }}>{idn.name}</Text>
-          <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: t.inkFaint }}>
-            {idn.actual}% lived · {idn.desired}% intended
-          </Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={{ fontFamily: serif(500), fontSize: 20, color: t.ink }}>{idn.name}</Text>
+          {tended && (
+            <Text numberOfLines={1} style={{ fontSize: 12.5, fontFamily: sans(600), color: t.inkFaint }}>{tended}</Text>
+          )}
         </View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Pill bg={c.color} onPress={logIt}>
-          <Icon name="plus" size={14} color="#fff" />
-          <Text style={{ color: '#fff', fontFamily: sans(700), fontSize: 13 }}>Log time</Text>
+        <Pill bg={t.surface3} onPress={logIt}>
+          <Icon name="plus" size={14} color={t.ink} />
+          <Text style={{ color: t.ink, fontFamily: sans(700), fontSize: 13 }}>Log</Text>
+        </Pill>
+        <Pill bg={t.ink} onPress={openIt}>
+          <Text style={{ color: t.bg, fontFamily: sans(700), fontSize: 13 }}>Open</Text>
+          <Icon name="chevron" size={14} stroke={2.4} color={t.bg} />
         </Pill>
         <Pill bg={t.surface3} onPress={clearCosmos} style={{ width: 34, height: 34, paddingHorizontal: 0, justifyContent: 'center' }}>
           <Text style={{ color: t.inkSoft, fontSize: 13, fontFamily: sans(600) }}>✕</Text>

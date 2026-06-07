@@ -23,11 +23,12 @@ import Dashboard from './src/screens/Dashboard';
 import Insights from './src/screens/Insights';
 import Reflect from './src/screens/Reflect';
 import Identities from './src/screens/Identities';
+import IdentityDetail from './src/screens/IdentityDetail';
 import Onboarding from './src/onboarding/Onboarding';
 
 function AppShell() {
   const { t } = useTheme();
-  const { tab, goTo, openLog, toast } = useStore();
+  const { tab, goTo, openLog, toast, detail, closeDetail } = useStore();
   const insets = useSafeAreaInsets();
 
   return (
@@ -37,10 +38,18 @@ function AppShell() {
       <View style={{ flex: 1, paddingTop: insets.top }}>
         <StatusBar />
         <View style={{ flex: 1 }}>
-          {tab === 'home' && <Dashboard />}
-          {tab === 'insights' && <Insights />}
-          {tab === 'reflect' && <Reflect />}
-          {tab === 'identities' && <Identities />}
+          {/* The Detail screen takes over the content area (backdrop, status bar
+              and tab bar stay) so its own Back returns to the active tab. */}
+          {detail ? (
+            <IdentityDetail identity={detail} onBack={closeDetail} />
+          ) : (
+            <>
+              {tab === 'home' && <Dashboard />}
+              {tab === 'insights' && <Insights />}
+              {tab === 'reflect' && <Reflect />}
+              {tab === 'identities' && <Identities />}
+            </>
+          )}
         </View>
         <TabBar tab={tab} setTab={goTo} onLog={() => openLog(null)} bottomInset={insets.bottom} />
       </View>
