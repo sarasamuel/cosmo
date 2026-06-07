@@ -69,6 +69,13 @@ export const RELAX = {
   isRelax: true,
 };
 
+// Typical session length per identity — the pre-filled default in the end-of-day
+// review so common days are one tap. Keyed by id so it survives persistence
+// (persisted identities reload without extra fields); unknown/runtime-added
+// identities fall back to 30m.
+export const USUAL_MINS = { writer: 45, reader: 30, engineer: 60, musician: 40, painter: 35, relax: 30 };
+export const usualMins = (idn) => (idn && idn.usualMins) || (idn && USUAL_MINS[idn.id]) || 30;
+
 // catalog for onboarding
 export const CATALOG = [
   'Writer', 'Reader', 'Engineer', 'Musician', 'Painter',

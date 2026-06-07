@@ -6,7 +6,8 @@ import { Animated, View, Text, Pressable, ScrollView, useWindowDimensions } from
 import Slider from '@react-native-community/slider';
 import { useStore, useTheme } from '../store/Store';
 import { WEEKS } from '../data/data';
-import { Glyph, Button, Card, Eyebrow } from '../components/primitives';
+import { Glyph, Button, Card, Eyebrow, Pill } from '../components/primitives';
+import Icon from '../components/Icon';
 import { SPACING } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
@@ -17,16 +18,20 @@ export default function WeekPlanSheet() {
   const lastWeek = WEEKS[0];
 
   const [plan, setPlan] = useState({});
+  const [resting, setResting] = useState({}); // id -> paused for this week (excluded from the total)
   const [mounted, setMounted] = useState(false);
   const slide = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (open) {
       const seed = {};
+      const restSeed = {};
       identities.forEach((i) => {
         seed[i.id] = i.desired;
+        restSeed[i.id] = i.desired === 0; // a 0% intention (paused last time) reopens as resting
       });
       setPlan(seed);
+      setResting(restSeed);
       setMounted(true);
     }
     Animated.timing(slide, {
@@ -40,12 +45,27 @@ export default function WeekPlanSheet() {
 
   if (!mounted) return null;
 
-  const total = identities.reduce((s, i) => s + (plan[i.id] || 0), 0);
+  // resting identities don't claim any of the week, so they're left out of the total
+  const total = identities.reduce((s, i) => s + (resting[i.id] ? 0 : plan[i.id] || 0), 0);
   const balanced = total === 100;
   const set = (id, v) => setPlan((p) => ({ ...p, [id]: v }));
   const livedLast = (id) => {
     const r = lastWeek && lastWeek.rows.find((x) => x.id === id);
     return r ? r.actual : null;
+  };
+  const rest = (id) => setResting((r) => ({ ...r, [id]: true }));
+  const bringBack = (id) => {
+    setResting((r) => ({ ...r, [id]: false }));
+    // restore a sensible commitment so it doesn't return at a bare 0%
+    setPlan((p) => ({ ...p, [id]: p[id] > 0 ? p[id] : livedLast(id) || 15 }));
+  };
+  // rested identities commit as 0% (paused for the week); the rest keep their value
+  const commit = () => {
+    const next = {};
+    identities.forEach((i) => {
+      next[i.id] = resting[i.id] ? 0 : plan[i.id] || 0;
+    });
+    onCommit(next);
   };
   const [start, end] = week.label.split(' – ');
   // cap around two-thirds so the sheet rises to ~midway and leaves a comfortable
@@ -102,35 +122,60 @@ export default function WeekPlanSheet() {
             {identities.map((i, k) => {
               const ll = livedLast(i.id);
               const c = colorsFor(i);
+              const isResting = !!resting[i.id];
               return (
                 <View key={i.id} style={{ paddingVertical: 15, borderTopWidth: k ? 1 : 0, borderTopColor: t.line2 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 11 }}>
-                    <Glyph char={i.glyph} size={34} fontSize={16} color={c.color} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: isResting ? 0 : 11 }}>
+                    <Glyph char={i.glyph} size={34} fontSize={16} color={c.color} opacity={isResting ? 0.4 : 1} />
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>{i.name}</Text>
-                      {ll != null && <Text style={{ fontSize: 12, color: t.inkFaint, fontFamily: sans(600) }}>last week you lived {ll}%</Text>}
+                      <Text style={{ fontSize: 16, fontFamily: sans(600), color: isResting ? t.inkSoft : t.ink }}>{i.name}</Text>
+                      {isResting ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
+                          <Icon name="moon" size={13} stroke={2} color={t.inkFaint} />
+                          <Text style={{ fontSize: 12.5, color: t.inkFaint, fontFamily: sans(600) }}>Resting this week — no pressure</Text>
+                        </View>
+                      ) : (
+                        ll != null && <Text style={{ fontSize: 12, color: t.inkFaint, fontFamily: sans(600) }}>last week you lived {ll}%</Text>
+                      )}
                     </View>
-                    <Text style={{ fontFamily: serif(500), fontSize: 21, color: t.ink }}>
-                      {plan[i.id] || 0}
-                      <Text style={{ fontSize: 13, color: t.inkFaint }}>%</Text>
-                    </Text>
+                    {isResting ? (
+                      <Pill bg={t.surface3} onPress={() => bringBack(i.id)} style={{ paddingHorizontal: 16, paddingVertical: 9 }}>
+                        <Text style={{ color: t.inkSoft, fontFamily: sans(700), fontSize: 13 }}>Bring back</Text>
+                      </Pill>
+                    ) : (
+                      <>
+                        <Text style={{ fontFamily: serif(500), fontSize: 21, color: t.ink }}>
+                          {plan[i.id] || 0}
+                          <Text style={{ fontSize: 13, color: t.inkFaint }}>%</Text>
+                        </Text>
+                        <Pressable
+                          onPress={() => rest(i.id)}
+                          hitSlop={6}
+                          style={({ pressed }) => ({ width: 36, height: 36, borderRadius: 10, backgroundColor: t.surface3, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+                        >
+                          <Icon name="moon" size={17} stroke={2} color={t.inkFaint} />
+                        </Pressable>
+                      </>
+                    )}
                   </View>
-                  <Slider
-                    minimumValue={0}
-                    maximumValue={50}
-                    step={5}
-                    value={plan[i.id] || 0}
-                    onValueChange={(v) => set(i.id, v)}
-                    minimumTrackTintColor={c.color}
-                    maximumTrackTintColor={t.surface3}
-                    thumbTintColor={c.color}
-                  />
+                  {!isResting && (
+                    <Slider
+                      minimumValue={0}
+                      maximumValue={50}
+                      step={5}
+                      value={plan[i.id] || 0}
+                      onValueChange={(v) => set(i.id, v)}
+                      minimumTrackTintColor={c.color}
+                      maximumTrackTintColor={t.surface3}
+                      thumbTintColor={c.color}
+                    />
+                  )}
                 </View>
               );
             })}
           </Card>
 
-          <Button onPress={() => onCommit(plan)} style={{ marginTop: 18 }} textStyle={{ color: t.bg }}>
+          <Button onPress={commit} style={{ marginTop: 18 }} textStyle={{ color: t.bg }}>
             Lock in {start}–{end}
           </Button>
           <Button variant="ghost" onPress={onClose} style={{ marginTop: 6 }}>

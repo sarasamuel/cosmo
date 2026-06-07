@@ -6,6 +6,7 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as storage from '../lib/storage';
+import * as notifications from '../lib/notifications';
 import {
   IDENTITIES, DRIFT, RELAX, SESSIONS, THIS_WEEK,
   alignment as alignmentFn, driftSum, driftActual, assignHue,
@@ -19,6 +20,10 @@ const KEY_STARTED = 'cosmo-started';
 const KEY_WEEK = 'cosmo-week-' + THIS_WEEK.label;
 const KEY_FORM = 'cosmo-form';
 const KEY_DATA = 'cosmo-data'; // mutable domain state (identities/drift/relax/sessions)
+const KEY_REMINDER = 'cosmo-reminder'; // { enabled, hour, minute } for the daily local reminder
+const KEY_LASTNOTIF = 'cosmo-lastnotif'; // delivery stamp of the last reminder tap we opened the review for
+
+const DEFAULT_REMINDER = { enabled: false, hour: 9, minute: 0 };
 
 export function StoreProvider({ children }) {
   const [form, setFormState] = useState('constellation');
@@ -39,6 +44,8 @@ export function StoreProvider({ children }) {
   const [addOpen, setAddOpen] = useState(false);
   const [cosmosFocus, setCosmosFocus] = useState(null); // focused identity in the cosmos card
   const [detail, setDetail] = useState(null); // identity whose full Detail screen is open (null = none)
+  const [review, setReview] = useState(false); // end-of-day review screen open (from the reminder tap)
+  const [reminder, setReminder] = useState(DEFAULT_REMINDER); // daily local notification prefs
   const [toast, setToast] = useState(null);
 
   // hydrate persisted prefs + the mutable domain state. storage.getItem logs and
@@ -46,17 +53,29 @@ export function StoreProvider({ children }) {
   // seed defaults *with a logged signal* rather than silently.
   useEffect(() => {
     (async () => {
-      const [t, s, w, f, d] = await Promise.all([
+      const [t, s, w, f, d, rem] = await Promise.all([
         storage.getItem(KEY_THEME),
         storage.getItem(KEY_STARTED),
         storage.getItem(KEY_WEEK),
         storage.getItem(KEY_FORM),
         storage.getItem(KEY_DATA),
+        storage.getItem(KEY_REMINDER),
       ]);
       if (t === 'light' || t === 'dark') setThemeName(t);
       if (s === '1') setStarted(true);
       if (w === '1') setWeekPlanned(true);
       if (f === 'orbit' || f === 'constellation') setFormState(f);
+      if (rem) {
+        try {
+          const r = JSON.parse(rem);
+          if (typeof r?.hour === 'number' && typeof r?.minute === 'number') {
+            setReminder({ enabled: !!r.enabled, hour: r.hour, minute: r.minute });
+          }
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn(`[storage] corrupt "${KEY_REMINDER}", using defaults:`, e && e.message ? e.message : e);
+        }
+      }
       if (d) {
         try {
           const data = JSON.parse(d);
@@ -72,6 +91,28 @@ export function StoreProvider({ children }) {
       }
       setHydrated(true);
     })();
+  }, []);
+
+  // Tapping the nightly reminder opens the end-of-day review. A warm tap fires
+  // the listener; a cold launch-by-tap comes through getInitialResponse. The
+  // latter can return a *cached* response on later launches, so we dedupe by the
+  // notification's delivery time — a new day's tap has a new stamp and reopens,
+  // a stale one doesn't. We only schedule our own notification, so any response
+  // is the reminder.
+  useEffect(() => {
+    const unsub = notifications.addResponseListener(() => setReview(true));
+    (async () => {
+      const resp = await notifications.getInitialResponse();
+      if (!resp) return;
+      const stamp = String((resp.notification && resp.notification.date) || '');
+      if (stamp) {
+        const seen = await storage.getItem(KEY_LASTNOTIF);
+        if (stamp === seen) return; // already handled this exact delivery
+        storage.setItem(KEY_LASTNOTIF, stamp);
+      }
+      setReview(true);
+    })();
+    return unsub;
   }, []);
 
   // persist the mutable domain state whenever it changes — gated on `hydrated`
@@ -114,15 +155,40 @@ export function StoreProvider({ children }) {
     setStarted(false);
   }, []);
 
+  // Persist the reminder prefs and (re)schedule or cancel the OS notification.
+  // Turning it on requires permission; if denied we revert to off so the UI
+  // reflects reality. Stable (no deps) — callers pass the full next state.
+  const persistReminder = useCallback(async (next) => {
+    setReminder(next);
+    storage.setItem(KEY_REMINDER, JSON.stringify(next));
+    if (!next.enabled) {
+      await notifications.cancelDaily();
+      return;
+    }
+    const granted = await notifications.ensurePermission();
+    if (!granted) {
+      const off = { ...next, enabled: false };
+      setReminder(off);
+      storage.setItem(KEY_REMINDER, JSON.stringify(off));
+      return;
+    }
+    await notifications.scheduleDaily(next.hour, next.minute);
+  }, []);
+  const setReminderEnabled = useCallback((enabled) => persistReminder({ ...reminder, enabled }), [reminder, persistReminder]);
+  const setReminderTime = useCallback((hour, minute) => persistReminder({ ...reminder, enabled: true, hour, minute }), [reminder, persistReminder]);
+
   const openLog = useCallback((preset) => {
     setLogPreset(preset && preset.id ? preset : null);
     setLogOpen(true);
   }, []);
   const closeLog = useCallback(() => setLogOpen(false), []);
 
-  const commitLog = useCallback((idn, mins, note) => {
+  // opts.silent suppresses the per-item toast (the end-of-day review applies
+  // several logs at once and shows a single summary toast instead).
+  const commitLog = useCallback((idn, mins, note, opts) => {
     const bump = Math.max(1, Math.round(mins / 12));
     const title = (note || '').trim(); // optional session label typed in the log sheet
+    const silent = !!(opts && opts.silent);
 
     // Relaxation: fill up to the allowance you set; the rest is honest Drift.
     if (idn.isRelax) {
@@ -137,7 +203,7 @@ export function StoreProvider({ children }) {
       if (spill > 0) setDrift((d) => ({ ...d, spill: (d.spill || 0) + spill }));
       setSessions((s) => [{ id: 'relax', label: title || 'Relaxation', mins, when: 'Just now' }, ...s]);
       setLogOpen(false);
-      showToast({ kind: 'log', name: 'Relaxation', mins, idn, spill }, 2800);
+      if (!silent) showToast({ kind: 'log', name: 'Relaxation', mins, idn, spill }, 2800);
       return;
     }
 
@@ -163,8 +229,32 @@ export function StoreProvider({ children }) {
     });
     setSessions((s) => [{ id: idn.id, label: title || idn.name + ' session', mins, when: 'Just now' }, ...s]);
     setLogOpen(false);
-    showToast({ kind: 'log', name: idn.name, mins, idn });
+    if (!silent) showToast({ kind: 'log', name: idn.name, mins, idn });
   }, [relax, showToast]);
+
+  // End-of-day review: apply several logs at once. entries: [{ id, mins }].
+  // Reuses commitLog per entry (so drift reclaim / relax spill / sessions all
+  // stay correct), silenced, then shows one summary toast.
+  const openReview = useCallback(() => setReview(true), []);
+  const closeReview = useCallback(() => setReview(false), []);
+  const commitReview = useCallback(
+    (entries) => {
+      const targets = relax.tracked ? [...identities, relax] : identities;
+      let totalMins = 0;
+      let count = 0;
+      entries.forEach(({ id, mins }) => {
+        const idn = targets.find((x) => x.id === id);
+        if (idn && mins > 0) {
+          commitLog(idn, mins, undefined, { silent: true });
+          totalMins += mins;
+          count += 1;
+        }
+      });
+      setReview(false);
+      if (count > 0) showToast({ kind: 'review', count, mins: totalMins });
+    },
+    [identities, relax, commitLog, showToast]
+  );
 
   const openPlan = useCallback(() => setPlanOpen(true), []);
   const closePlan = useCallback(() => setPlanOpen(false), []);
@@ -285,6 +375,13 @@ export function StoreProvider({ children }) {
       detail,
       openDetail,
       closeDetail,
+      review,
+      openReview,
+      closeReview,
+      commitReview,
+      reminder,
+      setReminderEnabled,
+      setReminderTime,
       setDesired,
       enter,
       restart,
@@ -297,7 +394,8 @@ export function StoreProvider({ children }) {
       relax, sessions, align, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
       toggleDriftApp, addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
-      focusCosmos, clearCosmos, detail, openDetail, closeDetail, setDesired, enter, restart, toast,
+      focusCosmos, clearCosmos, detail, openDetail, closeDetail, review, openReview, closeReview, commitReview,
+      reminder, setReminderEnabled, setReminderTime, setDesired, enter, restart, toast,
     ]
   );
 

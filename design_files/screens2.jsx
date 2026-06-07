@@ -130,7 +130,7 @@ function Identities({ identities, setIdentities, drift, onAdd, onReplayIntro, th
     <div className="scroll" style={{ padding: '8px 36px 30px' }}>
       <div style={{ paddingTop: 8 }}>
         <div className="eyebrow">Your identities</div>
-        <h1 className="serif" style={{ fontSize: 34, fontWeight: 500, margin: '8px 0 4px' }}>The people you’re becoming</h1>
+        <h1 className="serif" style={{ fontSize: 34, fontWeight: 500, margin: '8px 0 4px' }}>The person you’re becoming</h1>
         <p style={{ fontSize: 15.5, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
           Set how much of yourself each one deserves. They should sum to a whole.
         </p>

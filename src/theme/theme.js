@@ -76,7 +76,7 @@ export const darkTheme = {
   cstInk: '#fff3d2', // constellation name + connecting lines (warm on deep space)
   good: oklch(0.76, 0.1, 168),
   warn: oklch(0.8, 0.13, 64),
-  nebula: ['#1b1838', '#0c0b1c', 'rgba(108,82,180,0.30)', 'rgba(46,96,150,0.24)'],
+  nebula: ['#13111d', '#08070e', 'rgba(28, 16, 82, 0.78)', 'rgba(33, 19, 99, 0.89)'],
   radii,
   shadow: shadowDark,
   id: {

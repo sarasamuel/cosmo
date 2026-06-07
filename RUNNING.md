@@ -31,6 +31,62 @@ Then:
 To reset onboarding/theme while testing, use the **Replay the intro** button on
 the *You* tab, or clear the app's storage in Expo Go.
 
+## Building locally (development build)
+
+Some native modules don't work in **Expo Go** and need a custom **development
+build**. Notably **`expo-notifications`** (daily reminders) is unsupported in
+Expo Go on SDK 53+ — the toggle persists, but nothing fires until you run a dev
+build. Any time you add a native module, you're in this path.
+
+### One-time: install CocoaPods (iOS)
+
+iOS builds need CocoaPods. macOS **system Ruby is 2.6**, which is too old for
+modern CocoaPods, so install it via Homebrew (which brings its own Ruby) rather
+than `gem install`:
+
+```sh
+# install Homebrew (prompts for your password, then Enter)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zshrc
+eval "$(/opt/homebrew/bin/brew shellenv)"
+brew install cocoapods
+```
+
+### Build & run
+
+```sh
+npx expo run:ios       # builds the dev client + runs pod install for you
+npx expo run:android   # Android equivalent (needs Android Studio + an SDK)
+```
+
+Re-run the same command to rebuild after native changes. JS-only changes still
+hot-reload over Metro as usual — you only rebuild when native deps change.
+
+No Homebrew? Build in the cloud instead with **EAS** (needs a free Expo account,
+slower per build): `npx eas-cli build --profile development --platform ios`,
+then `npx eas-cli build:run -p ios`.
+
+### Gotcha: `expo install` can float transitive native deps
+
+`npx expo install <pkg>` runs a plain `npm install`, which can bump a **transitive**
+native dependency past what its parent supports. We hit this with Reanimated:
+`react-native-worklets` floated to `0.8.3` while Reanimated 4.2.1 requires
+`0.7.x`, breaking `pod install` with a *"Failed to validate worklets version"*
+error. `expo install --check` won't catch it — it only audits **direct** deps.
+
+Fix by pinning the SDK-bundled version as a direct dep:
+
+```sh
+npx expo install react-native-worklets   # installs the SDK-pinned 0.7.4
+```
+
+General reset when pods misbehave after adding native modules:
+
+```sh
+npx expo install --fix                      # realign direct deps to SDK versions
+rm -rf ios/Pods ios/Podfile.lock && npx pod-install ios
+```
+
 ## Architecture
 
 | Concern | File |
@@ -40,6 +96,7 @@ the *You* tab, or clear the app's storage in Expo Go.
 | Data model + helpers | [`src/data/data.js`](src/data/data.js) |
 | Theme tokens (light/dark) | [`src/theme/theme.js`](src/theme/theme.js) |
 | OKLCH → RGB conversion | [`src/lib/color.js`](src/lib/color.js) |
+| Nightly reminder (local notifications) | [`src/lib/notifications.js`](src/lib/notifications.js) |
 | Fonts (Newsreader / Hanken Grotesk) | [`src/theme/fonts.js`](src/theme/fonts.js) |
 | Cosmos 3D visualization | [`src/viz/CosmosViz.js`](src/viz/CosmosViz.js) |
 | Screens | [`src/screens/`](src/screens/) |

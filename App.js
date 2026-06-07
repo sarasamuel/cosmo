@@ -24,11 +24,12 @@ import Insights from './src/screens/Insights';
 import Reflect from './src/screens/Reflect';
 import Identities from './src/screens/Identities';
 import IdentityDetail from './src/screens/IdentityDetail';
+import EndOfDayReview from './src/screens/EndOfDayReview';
 import Onboarding from './src/onboarding/Onboarding';
 
 function AppShell() {
   const { t } = useTheme();
-  const { tab, goTo, openLog, toast, detail, closeDetail } = useStore();
+  const { tab, goTo, openLog, toast, detail, closeDetail, review, closeReview } = useStore();
   const insets = useSafeAreaInsets();
 
   return (
@@ -38,9 +39,12 @@ function AppShell() {
       <View style={{ flex: 1, paddingTop: insets.top }}>
         <StatusBar />
         <View style={{ flex: 1 }}>
-          {/* The Detail screen takes over the content area (backdrop, status bar
-              and tab bar stay) so its own Back returns to the active tab. */}
-          {detail ? (
+          {/* The end-of-day review (from the reminder tap) and the Detail screen
+              both take over the content area; the review also hides the tab bar
+              since it's a focused, full-screen task with its own Save/close. */}
+          {review ? (
+            <EndOfDayReview onClose={closeReview} />
+          ) : detail ? (
             <IdentityDetail identity={detail} onBack={closeDetail} />
           ) : (
             <>
@@ -51,7 +55,7 @@ function AppShell() {
             </>
           )}
         </View>
-        <TabBar tab={tab} setTab={goTo} onLog={() => openLog(null)} bottomInset={insets.bottom} />
+        {!review && <TabBar tab={tab} setTab={goTo} onLog={() => openLog(null)} bottomInset={insets.bottom} />}
       </View>
       <CosmosFocusPanel />
       <Toast toast={toast} bottom={120 + insets.bottom} />

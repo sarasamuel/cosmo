@@ -81,7 +81,7 @@ function Onboarding({ onDone }) {
               You are not your<br /><span style={{ fontStyle: 'italic' }}>to-do list.</span>
             </h1>
             <p style={{ fontSize: 18, lineHeight: 1.55, color: 'var(--ink-soft)', maxWidth: 460, margin: '0 auto' }}>
-              Cosmo helps you spend your hours on the people you most want to become — not the tasks that happen to be loudest.
+              Cosmo helps you spend your hours on the person you most want to become — not the tasks that happen to be loudest.
             </p>
             <button className="btn btn-primary" style={{ marginTop: 44, alignSelf: 'center', padding: '18px 48px' }} onClick={next}>Begin</button>
           </div>

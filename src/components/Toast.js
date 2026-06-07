@@ -20,11 +20,15 @@ export default function Toast({ toast, bottom = 130 }) {
   }, [toast, v]);
 
   const isPlan = toast && toast.kind === 'plan';
+  const isReview = toast && toast.kind === 'review';
+  const showCheck = isPlan || isReview; // both use the check badge, not an identity glyph
   const c = toast && toast.idn ? colorsFor(toast.idn) : null;
   const label = !toast
     ? ''
     : isPlan
     ? 'This week is set'
+    : isReview
+    ? `Today saved · ${toast.mins}m across ${toast.count} ${toast.count === 1 ? 'identity' : 'identities'}`
     : toast.spill > 0
     ? `${toast.mins}m logged · over your allowance → Drift`
     : `${toast.mins}m of ${toast.name} logged`;
@@ -59,7 +63,7 @@ export default function Toast({ toast, bottom = 130 }) {
             t.shadow.lg,
           ]}
         >
-          {isPlan ? (
+          {showCheck ? (
             <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.good, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="check" size={13} stroke={2.6} color="#fff" />
             </View>
