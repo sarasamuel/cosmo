@@ -1,17 +1,17 @@
-# Cosmo — Identity-Balance App
+# Handoff: Cosmo — Identity-Balance App (Onboarding + Drift Tracking)
 
 ## Overview
 **Cosmo** is a mobile app that reframes time management around **who you want to become** rather than a to-do list. The user defines a set of **identities** ("Writer", "Reader", "Engineer", "Musician", "Painter", …), declares how much of their time each one *deserves* (intention), logs sessions as they live, and the app visualizes the gap between intention and reality as an orbiting "cosmos" plus a set of balance metrics.
 
-This handoff covers the full prototype, with particular depth on the two features built most recently:
+This document is the design spec for the app, with particular depth on two core features:
 
 1. **Onboarding cadence step** — the user chooses to budget their time **by day, week, or month**, and sets how many **free hours** they actually have in that window. Every identity's percentage is then scaled into real hours.
 2. **"Free Time" persona + app-usage tracking** — a default-selected, deselectable "Free Time" identity that reserves guilt-free hours for rest/scrolling. Within it, the user opts to **track specific apps** (Instagram, TikTok, mobile games, etc.). Tracked-app time aggregates into a single **Drift** bucket shown across the portfolio and all metrics.
 
-## About the Design Files
-The files in `design_files/` are **design references created in HTML/React (via Babel-in-the-browser)** — a working prototype that demonstrates the intended look, layout, copy, and interactions. **They are not production code to copy directly.** They use CDN React + an in-browser Babel transform, inline styles, and plain-global data modules — appropriate for a fast prototype, not for shipping.
+## About this document
+This README is the **design spec** for Cosmo — the intended look, layout, copy, interactions, data model, and tokens. It is the source of truth for *design intent*. The running app is implemented in **React Native / Expo (SDK 55)** under `src/` (root: `App.js`), which is the source of truth for *current behavior* and has evolved past this spec in places (e.g. weekly planning, nightly reminder + end-of-day review).
 
-Your task is to **recreate these designs in the target codebase's environment** using its established patterns, component library, navigation, and state management. If there is no existing app yet, choose the most appropriate framework for the product (this is a phone-first app, so **React Native / Expo** or **SwiftUI** are natural choices) and implement the designs there.
+> The original HTML/React prototype (`design_files/`) this was handed off as has been **removed** from the repo. Where this document names prototype files — `data.js`, `onboarding.jsx`, `screens.jsx`, `screens2.jsx`, `logsheet.jsx`, `components.jsx`, `viz.jsx` — the equivalent live code lives under `src/`. See [`RUNNING.md`](RUNNING.md) for the file map and how to run the app.
 
 ## Fidelity
 **High-fidelity (hifi).** Colors, typography, spacing, copy, and interactions are final and intended to be matched closely. Exact token values are listed below in *Design Tokens*. Recreate the UI faithfully using the target codebase's primitives; do not introduce a new visual language.
@@ -20,17 +20,17 @@ One caveat: the prototype renders inside a **fixed 868×1228 "device" frame** th
 
 ---
 
-## Architecture of the Prototype (for reference)
-All state lives in `app.jsx` (`App` component). Data and helpers are plain globals on `window.MOSAIC` defined in `data.js`. Screens are functions that receive state + callbacks as props. Load order (from `Cosmo.html`): React/ReactDOM/Babel → `data.js` → `viz.jsx`, `viz3d.jsx` (cosmos visualizations) → `components.jsx` (icons, segmented control, status bar, tab bar, starfield) → `screens.jsx` (Dashboard, Insights) → `screens2.jsx` (Reflect, Identities) → `logsheet.jsx` (log-session bottom sheet) → `onboarding.jsx` → `app.jsx`.
+## Architecture
+State lives in a single React context store ([`src/store/Store.js`](src/store/Store.js)); data + helpers in [`src/data/data.js`](src/data/data.js); screens under [`src/screens/`](src/screens/), visualizations under [`src/viz/`](src/viz/). See [`RUNNING.md`](RUNNING.md) for the full file map.
 
-Key state in `App`:
-- `theme` — `'dark'` (the hero/default) or `'light'`; persisted to `localStorage['cosmo-theme']`.
-- `started` — whether onboarding is complete; persisted to `localStorage['cosmo-started']`.
+Key state in the store:
+- `theme` — `'dark'` (the hero/default) or `'light'`; persisted to AsyncStorage.
+- `started` — whether onboarding is complete; persisted.
 - `tab` — active bottom-tab: `'home' | 'insights' | 'reflect' | 'identities'`.
 - `identities` — array of identity objects (see data model).
-- `drift` — the Drift object, including its `apps` array (see below).
-- `sessions` — logged sessions, most-recent-first.
-- `logOpen`, `logPreset`, `toast` — log-sheet + confirmation-toast UI state.
+- `drift` — the Drift object, including its `apps` array (see below); `actual` is derived, not stored.
+- `relax`, `sessions` — the Relaxation allowance and logged sessions (most-recent-first).
+- transient UI: log-sheet, week-plan sheet, toast, cosmos focus, Detail / end-of-day-review screens.
 
 ---
 
@@ -136,7 +136,7 @@ Eyebrow "Rebalancing", headline "Insights", intro copy. A list of **insight card
 Weekly reflection. Hero card: an **AlignmentRing** + delta vs. last week (green/amber) + a sentence. **Portfolio balance** card: two **StackedBar**s — "Intended" (identities by `desired`) and "Lived" (identities **plus Drift** by `actual`); Drift appears as a neutral segment here, so its tracked-app total is represented in the lived balance. **Identity trends** grid: per-identity sparkline + up/down/flat arrow. **In a sentence** summary card with "win" pills. **Where to lean next week**: focus identity cards with "{n}pts below intention".
 
 ### 5. You / Identities — `identities` tab (`screens2.jsx` → `Identities`)
-Eyebrow "Your identities", headline "The people you're becoming". A **balance meter** card (sum of `desired` %, "Balanced / Over-committed / Room to give"). A card with a **slider row per identity** (0–50, step 5) to re-set intentions. An **Appearance** section with a Theme segmented control (Light "Celestial dawn" / Dark "Deep space"). "Add an identity" (uses `assignColor`) and "Replay the intro" (clears `started`) buttons.
+Eyebrow "Your identities", headline "The person you're becoming". A **balance meter** card (sum of `desired` %, "Balanced / Over-committed / Room to give"). A card with a **slider row per identity** (0–50, step 5) to re-set intentions. An **Appearance** section with a Theme segmented control (Light "Celestial dawn" / Dark "Deep space"). "Add an identity" (uses `assignColor`) and "Replay the intro" (clears `started`) buttons.
 
 ### Global chrome (`components.jsx`)
 - **StatusBar** — faux iOS status bar (9:41, dots, battery).
@@ -192,16 +192,5 @@ Defined as CSS custom properties in `styles.css` for both themes (light "Celesti
 ## Assets
 No raster images. All iconography is **inline SVG** in `components.jsx` (`Icon` component, 1.8–2.6 stroke). The cosmos and constellation visuals are **drawn with SVG/canvas** in `viz.jsx` / `viz3d.jsx`. Persona "glyphs" are just single letters in colored discs. Fonts come from Google Fonts. There are no brand assets to license.
 
-## Files (in `design_files/`)
-- `Cosmo.html` — entry point; shows script load order.
-- `styles.css` — full design system (tokens, both themes, component styles).
-- `data.js` — data model + palette/aggregation/format helpers on `window.MOSAIC` (**read this first** — it defines identities, `DRIFT`, `DRIFT_APPS`, `driftSum`, `fmtMins`, color helpers).
-- `onboarding.jsx` — the 5-step flow incl. cadence (`OnbCadence`), allocation (`OnbAllocate`), and the Free Time app-tracking panel.
-- `app.jsx` — root state, `commitLog`, `toggleDriftApp`, tab routing.
-- `screens.jsx` — Dashboard (incl. the expandable Drift breakdown) + Insights.
-- `screens2.jsx` — Reflect + Identities ("You").
-- `logsheet.jsx` — log-session bottom sheet.
-- `components.jsx` — Icon set, Segmented, StatusBar, TabBar, Starfield, shared bits.
-- `viz.jsx`, `viz3d.jsx` — cosmos visualizations.
-
-To run the prototype as-is: serve this folder over HTTP (e.g. `npx serve design_files`) and open `Cosmo.html` — it needs a server because the `.jsx` files are fetched. To reset onboarding, clear `localStorage` (`cosmo-started`, `cosmo-theme`).
+## Implementation map
+The live app's file structure is documented in [`RUNNING.md`](RUNNING.md) (Architecture table). In brief: `App.js` (root + routing), `src/store/Store.js` (state + persistence), `src/data/data.js` (data model + helpers — **read this first**), `src/theme/` (tokens, fonts), `src/screens/` (Dashboard, Insights, Reflect, Identities, IdentityDetail, EndOfDayReview), `src/viz/` (cosmos visualizations), `src/components/` and `src/onboarding/` (shared UI + the 5-step flow), `src/lib/` (color, storage, notifications, layout).

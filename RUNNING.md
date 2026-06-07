@@ -1,8 +1,7 @@
 # Running Cosmo (React Native / Expo)
 
-This is the React Native (Expo SDK 55) implementation of the Cosmo prototype.
-The original design references live in [`design_files/`](design_files/) and the
-design handoff is in [`README.md`](README.md).
+This is the React Native (Expo SDK 55) implementation of Cosmo. The product
+overview, data model, and design tokens are documented in [`README.md`](README.md).
 
 ## Prerequisites
 
