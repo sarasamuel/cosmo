@@ -76,6 +76,11 @@ export const RELAX = {
 export const USUAL_MINS = { writer: 45, reader: 30, engineer: 60, musician: 40, painter: 35, relax: 30 };
 export const usualMins = (idn) => (idn && idn.usualMins) || (idn && USUAL_MINS[idn.id]) || 30;
 
+// Weekly free-hours model — the hours a typical week holds for the user. Single
+// source of truth shared by onboarding's cadence slider and the weekly re-plan
+// sheet, so the "% → real hours" math stays consistent across both.
+export const FREE_HOURS_WEEK = { min: 5, max: 90, step: 1, def: 35 };
+
 // catalog for onboarding
 export const CATALOG = [
   'Writer', 'Reader', 'Engineer', 'Musician', 'Painter',

@@ -8,7 +8,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import * as storage from '../lib/storage';
 import * as notifications from '../lib/notifications';
 import {
-  IDENTITIES, DRIFT, RELAX, SESSIONS, THIS_WEEK,
+  IDENTITIES, DRIFT, RELAX, SESSIONS, THIS_WEEK, FREE_HOURS_WEEK,
   alignment as alignmentFn, driftSum, driftActual, assignHue,
 } from '../data/data';
 import { themes, identityColors } from '../theme/theme';
@@ -22,6 +22,7 @@ const KEY_FORM = 'cosmo-form';
 const KEY_DATA = 'cosmo-data'; // mutable domain state (identities/drift/relax/sessions)
 const KEY_REMINDER = 'cosmo-reminder'; // { enabled, hour, minute } for the daily local reminder
 const KEY_LASTNOTIF = 'cosmo-lastnotif'; // delivery stamp of the last reminder tap we opened the review for
+const KEY_FREEHOURS = 'cosmo-freehours'; // weekly free hours the user has to allocate (from onboarding / re-plan)
 
 const DEFAULT_REMINDER = { enabled: false, hour: 9, minute: 0 };
 
@@ -41,10 +42,12 @@ export function StoreProvider({ children }) {
   const [logPreset, setLogPreset] = useState(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [weekPlanned, setWeekPlanned] = useState(false);
+  const [freeHours, setFreeHoursState] = useState(FREE_HOURS_WEEK.def);
   const [addOpen, setAddOpen] = useState(false);
   const [cosmosFocus, setCosmosFocus] = useState(null); // focused identity in the cosmos card
   const [detail, setDetail] = useState(null); // identity whose full Detail screen is open (null = none)
   const [review, setReview] = useState(false); // end-of-day review screen open (from the reminder tap)
+  const [celebrate, setCelebrate] = useState(null); // identity that just reached its intention (celebration overlay)
   const [reminder, setReminder] = useState(DEFAULT_REMINDER); // daily local notification prefs
   const [toast, setToast] = useState(null);
 
@@ -53,15 +56,20 @@ export function StoreProvider({ children }) {
   // seed defaults *with a logged signal* rather than silently.
   useEffect(() => {
     (async () => {
-      const [t, s, w, f, d, rem] = await Promise.all([
+      const [t, s, w, f, d, rem, fh] = await Promise.all([
         storage.getItem(KEY_THEME),
         storage.getItem(KEY_STARTED),
         storage.getItem(KEY_WEEK),
         storage.getItem(KEY_FORM),
         storage.getItem(KEY_DATA),
         storage.getItem(KEY_REMINDER),
+        storage.getItem(KEY_FREEHOURS),
       ]);
       if (t === 'light' || t === 'dark') setThemeName(t);
+      const fhNum = Number(fh);
+      if (fh != null && Number.isFinite(fhNum)) {
+        setFreeHoursState(Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, fhNum)));
+      }
       if (s === '1') setStarted(true);
       if (w === '1') setWeekPlanned(true);
       if (f === 'orbit' || f === 'constellation') setFormState(f);
@@ -137,6 +145,14 @@ export function StoreProvider({ children }) {
   }, []);
   useEffect(() => () => toastTimer.current && clearTimeout(toastTimer.current), []);
 
+  // Weekly free hours — the pool the per-identity % scale into real hours. Set in
+  // onboarding and re-adjustable from the weekly plan sheet; persisted.
+  const setFreeHours = useCallback((h) => {
+    const clamped = Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, Math.round(h)));
+    setFreeHoursState(clamped);
+    storage.setItem(KEY_FREEHOURS, String(clamped));
+  }, []);
+
   const setTheme = useCallback((t) => {
     setThemeName(t);
     storage.setItem(KEY_THEME, t);
@@ -207,6 +223,11 @@ export function StoreProvider({ children }) {
       return;
     }
 
+    // did this log push the identity from under its intention to met? (celebrate
+    // once, on the crossing — not every log after it's already met)
+    const cur = identities.find((x) => x.id === idn.id);
+    const metNow = cur && cur.desired > 0 && cur.actual < cur.desired && Math.min(60, cur.actual + bump) >= cur.desired;
+
     setIdentities((prev) =>
       prev.map((i) =>
         i.id === idn.id
@@ -229,8 +250,13 @@ export function StoreProvider({ children }) {
     });
     setSessions((s) => [{ id: idn.id, label: title || idn.name + ' session', mins, when: 'Just now' }, ...s]);
     setLogOpen(false);
-    if (!silent) showToast({ kind: 'log', name: idn.name, mins, idn });
-  }, [relax, showToast]);
+    // the celebration replaces the toast on the crossing log; batch (silent) logs
+    // skip it so a multi-identity review doesn't pile up overlays
+    if (metNow && !silent) setCelebrate({ ...cur, actual: Math.min(60, cur.actual + bump) });
+    else if (!silent) showToast({ kind: 'log', name: idn.name, mins, idn });
+  }, [identities, relax, showToast]);
+
+  const clearCelebrate = useCallback(() => setCelebrate(null), []);
 
   // End-of-day review: apply several logs at once. entries: [{ id, mins }].
   // Reuses commitLog per entry (so drift reclaim / relax spill / sessions all
@@ -379,9 +405,13 @@ export function StoreProvider({ children }) {
       openReview,
       closeReview,
       commitReview,
+      celebrate,
+      clearCelebrate,
       reminder,
       setReminderEnabled,
       setReminderTime,
+      freeHours,
+      setFreeHours,
       setDesired,
       enter,
       restart,
@@ -395,7 +425,8 @@ export function StoreProvider({ children }) {
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
       toggleDriftApp, addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
       focusCosmos, clearCosmos, detail, openDetail, closeDetail, review, openReview, closeReview, commitReview,
-      reminder, setReminderEnabled, setReminderTime, setDesired, enter, restart, toast,
+      celebrate, clearCelebrate, reminder, setReminderEnabled, setReminderTime, freeHours, setFreeHours,
+      setDesired, enter, restart, toast,
     ]
   );
 

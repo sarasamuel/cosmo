@@ -1,5 +1,5 @@
 /* Onboarding helpers ported from onboarding.jsx. */
-import { paletteHue } from '../data/data';
+import { paletteHue, FREE_HOURS_WEEK } from '../data/data';
 import { oklch } from '../lib/color';
 
 export const FREE_TIME = 'Relaxation Time';
@@ -15,7 +15,7 @@ export function personaColor(name, idx, theme) {
 /* Cadence presets — the rhythm at which a life is balanced. */
 export const CADENCE = {
   day: { key: 'day', label: 'By day', per: '/day', noun: 'each day', min: 1, max: 16, step: 1, def: 7, window: true },
-  week: { key: 'week', label: 'By week', per: '/wk', noun: 'each week', min: 5, max: 90, step: 1, def: 35, window: false },
+  week: { ...FREE_HOURS_WEEK, key: 'week', label: 'By week', per: '/wk', noun: 'each week', window: false },
   month: { key: 'month', label: 'By month', per: '/mo', noun: 'each month', min: 20, max: 360, step: 5, def: 150, window: false },
 };
 

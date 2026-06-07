@@ -43,7 +43,7 @@ function WelcomeConstellation() {
 
 export default function Onboarding() {
   const { t } = useTheme();
-  const { enter, form, setForm } = useStore();
+  const { enter, form, setForm, setFreeHours: persistFreeHours } = useStore();
   const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState(0);
@@ -294,7 +294,13 @@ export default function Onboarding() {
                 <CosmosViz identities={IDENTITIES} allowLog={false} interactive={false} name={USER.name} />
               )}
             </View>
-            <Button onPress={enter} style={{ paddingHorizontal: 48 }}>
+            <Button
+              onPress={() => {
+                persistFreeHours(freeHours); // carry the chosen free hours into the app
+                enter();
+              }}
+              style={{ paddingHorizontal: 48 }}
+            >
               Enter Cosmos
             </Button>
           </View>

@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useStore, useTheme } from '../store/Store';
-import { WEEKS } from '../data/data';
+import { WEEKS, FREE_HOURS_WEEK, fmtMins } from '../data/data';
 import { Glyph, Button, Card, Eyebrow, Pill } from '../components/primitives';
 import Icon from '../components/Icon';
 import { SPACING } from '../lib/layout';
@@ -13,12 +13,13 @@ import { serif, sans } from '../theme/fonts';
 
 export default function WeekPlanSheet() {
   const { t, colorsFor } = useTheme();
-  const { planOpen: open, week, identities, closePlan: onClose, commitWeekPlan: onCommit } = useStore();
+  const { planOpen: open, week, identities, freeHours, setFreeHours, closePlan: onClose, commitWeekPlan: onCommit } = useStore();
   const { height } = useWindowDimensions();
   const lastWeek = WEEKS[0];
 
   const [plan, setPlan] = useState({});
   const [resting, setResting] = useState({}); // id -> paused for this week (excluded from the total)
+  const [hours, setHours] = useState(freeHours); // local until "Lock in" (avoids per-drag persistence)
   const [mounted, setMounted] = useState(false);
   const slide = useRef(new Animated.Value(0)).current;
 
@@ -32,6 +33,7 @@ export default function WeekPlanSheet() {
       });
       setPlan(seed);
       setResting(restSeed);
+      setHours(freeHours);
       setMounted(true);
     }
     Animated.timing(slide, {
@@ -41,7 +43,7 @@ export default function WeekPlanSheet() {
     }).start(({ finished }) => {
       if (finished && !open) setMounted(false);
     });
-  }, [open, identities, slide]);
+  }, [open, identities, freeHours, slide]);
 
   if (!mounted) return null;
 
@@ -59,12 +61,15 @@ export default function WeekPlanSheet() {
     // restore a sensible commitment so it doesn't return at a bare 0%
     setPlan((p) => ({ ...p, [id]: p[id] > 0 ? p[id] : livedLast(id) || 15 }));
   };
+  // a % of the week's free hours, formatted ("35h" pool, 20% → "7h")
+  const hoursFor = (pct) => fmtMins(Math.round((hours * (pct || 0)) / 100) * 60);
   // rested identities commit as 0% (paused for the week); the rest keep their value
   const commit = () => {
     const next = {};
     identities.forEach((i) => {
       next[i.id] = resting[i.id] ? 0 : plan[i.id] || 0;
     });
+    if (hours !== freeHours) setFreeHours(hours); // persist the adjusted free hours
     onCommit(next);
   };
   const [start, end] = week.label.split(' – ');
@@ -106,6 +111,27 @@ export default function WeekPlanSheet() {
             Decide how much of <Text style={{ fontFamily: serif(400, true) }}>this week</Text> each identity deserves. Next week you’ll choose again — your intentions can shift with your life.
           </Text>
 
+          {/* free hours this week — the pool the percentages below scale into */}
+          <Card style={{ paddingVertical: 16, paddingHorizontal: 18, marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 2 }}>
+              <Text style={{ fontSize: 14, fontFamily: sans(700), color: t.ink }}>Free time this week</Text>
+              <Text style={{ fontFamily: serif(500), fontSize: 26, color: t.ink }}>{fmtMins(hours * 60)}</Text>
+            </View>
+            <Text style={{ fontSize: 12.5, color: t.inkFaint, fontFamily: sans(500), marginBottom: 8 }}>
+              The hours that are truly yours — every % below becomes real hours of this.
+            </Text>
+            <Slider
+              minimumValue={FREE_HOURS_WEEK.min}
+              maximumValue={FREE_HOURS_WEEK.max}
+              step={FREE_HOURS_WEEK.step}
+              value={hours}
+              onValueChange={setHours}
+              minimumTrackTintColor={t.ink}
+              maximumTrackTintColor={t.surface3}
+              thumbTintColor={t.ink}
+            />
+          </Card>
+
           <Card style={{ paddingVertical: 14, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
             <Text style={{ fontFamily: serif(500), fontSize: 30, color: balanced ? t.good : t.warn }}>{total}%</Text>
             <View style={{ flex: 1 }}>
@@ -144,10 +170,13 @@ export default function WeekPlanSheet() {
                       </Pill>
                     ) : (
                       <>
-                        <Text style={{ fontFamily: serif(500), fontSize: 21, color: t.ink }}>
-                          {plan[i.id] || 0}
-                          <Text style={{ fontSize: 13, color: t.inkFaint }}>%</Text>
-                        </Text>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ fontFamily: serif(500), fontSize: 21, color: t.ink }}>
+                            {plan[i.id] || 0}
+                            <Text style={{ fontSize: 13, color: t.inkFaint }}>%</Text>
+                          </Text>
+                          <Text style={{ fontSize: 11.5, fontFamily: sans(600), color: t.inkFaint, marginTop: 1 }}>{hoursFor(plan[i.id])}/wk</Text>
+                        </View>
                         <Pressable
                           onPress={() => rest(i.id)}
                           hitSlop={6}
