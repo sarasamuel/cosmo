@@ -6,7 +6,6 @@
    `onRest`/`onEdit`/`onRetire` handlers are optional hooks for later wiring. */
 import React from 'react';
 import { ScrollView, View, Text, Pressable } from 'react-native';
-import Svg, { Path, Rect } from 'react-native-svg';
 import { useStore, useTheme } from '../store/Store';
 import { Card, Glyph, Eyebrow, SectionTitle } from '../components/primitives';
 import Icon from '../components/Icon';
@@ -29,17 +28,6 @@ function weekNote(actual, desired) {
   if (actual >= desired) return 'Carrying the week — at or above your intention. Nothing to fix.';
   if (actual >= desired * 0.66) return 'Close to your intention. A little more brings it home.';
   return 'A soft presence lately — under your intention, but never gone. No pressure to change that.';
-}
-
-/* A simple archive/retire glyph (no equivalent in the shared Icon set). */
-function ArchiveGlyph({ size = 18, color }) {
-  const s = 24;
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <Rect x={4} y={6} width={16} height={4} rx={1} />
-      <Path d={`M5.5 10v7.5a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V10M10 13.5h4`} />
-    </Svg>
-  );
 }
 
 /* A row in the "Manage" card: leading icon disc, title + subtitle, chevron. */
@@ -233,7 +221,7 @@ export default function IdentityDetail({
           onPress={onEdit}
         />
         <ManageRow
-          icon={<ArchiveGlyph size={18} color={t.warn} />}
+          icon={<Icon name="archive" size={18} stroke={1.8} color={t.warn} />}
           title="Retire this identity"
           subtitle="Let it rest for now — kept in your history"
           color={t.warn}

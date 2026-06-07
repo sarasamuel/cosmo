@@ -49,6 +49,13 @@ const PATHS = {
       <Path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" />
     </>
   ),
+  archive: (
+    <>
+      <Path d="M4.5 5.6a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1V8H4.5z" />
+      <Path d="M5.8 8v9.4a1.6 1.6 0 0 0 1.6 1.6h9.2a1.6 1.6 0 0 0 1.6-1.6V8" />
+      <Path d="M10 11.5h4" />
+    </>
+  ),
 };
 
 /* react-native-svg doesn't resolve `currentColor`, so we substitute the actual

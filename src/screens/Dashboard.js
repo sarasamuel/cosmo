@@ -110,7 +110,7 @@ function CosmosHero({ identities, onTap, name }) {
 
 export default function Dashboard() {
   const { t, colorsFor } = useTheme();
-  const { identities, drift, relax, sessions, align, openLog, toggleDriftApp, week, weekPlanned, openPlan } = useStore();
+  const { identities, drift, relax, sessions, align, openLog, focusCosmos, toggleDriftApp, week, weekPlanned, openPlan } = useStore();
   const [driftOpen, setDriftOpen] = useState(false);
   const relaxC = colorsFor(relax);
   const pad = useScreenPad();
@@ -164,8 +164,9 @@ export default function Dashboard() {
           <SectionTitle>Desired vs. actual</SectionTitle>
           <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: t.inkFaint }}>past 7 days</Text>
         </View>
+        {/* tap surfaces the focus panel (Log / Open Detail), same as the cosmos */}
         {identities.map((i, k) => (
-          <IdentityRow key={i.id} idn={i} onTap={openLog} topBorder={k > 0} />
+          <IdentityRow key={i.id} idn={i} onTap={focusCosmos} topBorder={k > 0} />
         ))}
 
         {/* relaxation — a planned allowance; overflow becomes drift */}
