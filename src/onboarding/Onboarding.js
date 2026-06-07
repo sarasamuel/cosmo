@@ -258,9 +258,9 @@ export default function Onboarding() {
         {step === 4 && (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <Eyebrow style={{ marginBottom: 18 }}>Your cosmos</Eyebrow>
-            <Text style={{ fontFamily: serif(500), fontSize: 32, color: t.ink, marginBottom: 10, textAlign: 'center' }}>Here is the shape of you.</Text>
+            <Text style={{ fontFamily: serif(500), fontSize: 32, color: t.ink, marginBottom: 10, textAlign: 'center' }}>A map of who you want to be.</Text>
             <Text style={{ fontSize: 16, color: t.inkSoft, marginBottom: 14, lineHeight: 24, textAlign: 'center', maxWidth: 440 }}>
-              These identities now move together. Pick the view that speaks to you — you can switch anytime.
+              These identities move together. Pick the view that speaks to you — you can switch anytime.
             </Text>
 
             {/* Constellation / Orbit toggle — the choice becomes the Portfolio default */}

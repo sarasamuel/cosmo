@@ -296,7 +296,7 @@ export default function ConstellationViz({
             return (
               <G key={idn.id} opacity={isSel ? 1 : dim ? 0.34 : 1} onPress={interactive ? () => focusNode(idn) : undefined}>
                 {/* intention halo */}
-                <Circle cx={sx} cy={sy} r={haloR} fill="none" stroke={c.color} strokeWidth={isSel ? 1.6 : 1} strokeOpacity="0.42" strokeDasharray="2 5" />
+                <Circle cx={sx} cy={sy} r={haloR} fill="none" stroke={c.color} strokeWidth={isSel ? 2.4 : 1.8} strokeOpacity={isSel ? 0.85 : 0.7} strokeDasharray="3 3.5" />
                 {/* soft glow */}
                 <Circle cx={sx} cy={sy} r={glint} fill={c.color} opacity={0.22 * bright} />
                 {/* sparkle glints */}

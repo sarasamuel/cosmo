@@ -100,7 +100,7 @@ function CosmosHero({ identities, onTap, name }) {
           </ErrorBoundary>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 18, marginTop: 2 }}>
-          <LegendItem filled label={isConst ? 'bright = your time' : 'filled = your time'} dk={dk} />
+          <LegendItem filled label={'fill = your time'} dk={dk} />
           <LegendItem filled={false} label="ring = intention" dk={dk} />
         </View>
       </LinearGradient>

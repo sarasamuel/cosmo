@@ -320,32 +320,38 @@ export default function CosmosViz({
           {order.map(({ idn, sx, sy, scale, depth }) => {
             const c = colorsFor(idn);
             const isSel = idn.id === selectedId;
-            const selBoost = isSel ? 1 + grow * 1.5 : 1;
+            const selBoost = isSel ? 1 + grow * 1.25 : 1;
             const base = (13 + idn.desired * 0.58) * scale * selBoost;
             const inner = base * Math.sqrt(fillLevel(idn));
             const dimmed = selectedId && !isSel;
             const op = isSel ? 1 : dimmed ? 0.22 : 0.45 + depth * 0.55;
+            // A focused planet grows and is rotated to the front, which the tilt
+            // pushes high — its halo can overrun the top of the viewBox. Clamp the
+            // grown planet's center so the halo (+ its label) stay fully on-screen.
+            const haloR = base * 1.5;
+            const labelRoom = base + 16 * scale;
+            const cy = isSel ? Math.max(haloR + 6, Math.min(H - labelRoom, sy)) : sy;
             return (
               <G
                 key={idn.id}
                 opacity={op}
                 onPress={interactive ? () => focusNode(idn) : undefined}
               >
-                <Circle cx={sx} cy={sy} r={base * 1.5} fill={c.color} opacity={(isSel ? 0.28 : 0.18) * (isSel ? 1 : depth)} />
+                <Circle cx={sx} cy={cy} r={base * 1.5} fill={c.color} opacity={(isSel ? 0.28 : 0.18) * (isSel ? 1 : depth)} />
                 <Circle
                   cx={sx}
-                  cy={sy}
+                  cy={cy}
                   r={base}
                   fill="none"
                   stroke={c.color}
-                  strokeWidth={(1.4 + (isSel ? grow * 1.2 : 0)) * scale}
-                  strokeOpacity={isSel ? 0.9 : 0.6}
+                  strokeWidth={(2.2 + (isSel ? grow * 1.2 : 0)) * scale}
+                  strokeOpacity={isSel ? 0.95 : 0.78}
                 />
-                <Circle cx={sx} cy={sy} r={inner} fill={c.color} />
+                <Circle cx={sx} cy={cy} r={inner} fill={c.color} />
                 {/* full identity name beneath the planet, fading with depth */}
                 <SvgText
                   x={sx}
-                  y={sy + base + 13 * scale}
+                  y={cy + base + 13 * scale}
                   textAnchor="middle"
                   fontFamily={sans(600)}
                   fontSize={12.5}
