@@ -18,8 +18,8 @@ const TONE = {
 
 export default function Insights() {
   const { t } = useTheme();
-  const { identities, drift, openLog } = useStore();
-  const find = (id) => identities.find((i) => i.id === id) || drift;
+  const { identities, retired, drift, openLog } = useStore();
+  const find = (id) => identities.find((i) => i.id === id) || retired.find((i) => i.id === id) || drift;
   const pad = useScreenPad();
 
   return (

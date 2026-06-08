@@ -18,6 +18,7 @@ const StoreContext = createContext(null);
 const KEY_THEME = 'cosmo-theme';
 const KEY_STARTED = 'cosmo-started';
 const KEY_WEEK = 'cosmo-week-' + THIS_WEEK.label;
+const KEY_ALLMET = 'cosmo-allmet-' + THIS_WEEK.label; // fired-once flag for the whole-week celebration
 const KEY_FORM = 'cosmo-form';
 const KEY_DATA = 'cosmo-data'; // mutable domain state (identities/drift/relax/sessions)
 const KEY_REMINDER = 'cosmo-reminder'; // { enabled, hour, minute } for the daily local reminder
@@ -27,13 +28,14 @@ const KEY_FREEHOURS = 'cosmo-freehours'; // weekly free hours the user has to al
 const DEFAULT_REMINDER = { enabled: false, hour: 9, minute: 0 };
 
 export function StoreProvider({ children }) {
-  const [form, setFormState] = useState('constellation');
+  const [form, setFormState] = useState('orbit');
   const [theme, setThemeName] = useState('dark');
   const [started, setStarted] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   const [tab, setTab] = useState('home');
   const [identities, setIdentities] = useState(IDENTITIES);
+  const [retired, setRetired] = useState([]); // retired identities — kept for history, out of active lists/viz
   const [drift, setDrift] = useState(DRIFT);
   const [relax, setRelax] = useState(RELAX);
   const [sessions, setSessions] = useState(SESSIONS);
@@ -48,6 +50,8 @@ export function StoreProvider({ children }) {
   const [detail, setDetail] = useState(null); // identity whose full Detail screen is open (null = none)
   const [review, setReview] = useState(false); // end-of-day review screen open (from the reminder tap)
   const [celebrate, setCelebrate] = useState(null); // identity that just reached its intention (celebration overlay)
+  const [allMetOpen, setAllMetOpen] = useState(false); // whole-week "every intention met" celebration
+  const [allMetFired, setAllMetFired] = useState(false); // already celebrated this week (fire once)
   const [reminder, setReminder] = useState(DEFAULT_REMINDER); // daily local notification prefs
   const [toast, setToast] = useState(null);
 
@@ -56,7 +60,7 @@ export function StoreProvider({ children }) {
   // seed defaults *with a logged signal* rather than silently.
   useEffect(() => {
     (async () => {
-      const [t, s, w, f, d, rem, fh] = await Promise.all([
+      const [t, s, w, f, d, rem, fh, am] = await Promise.all([
         storage.getItem(KEY_THEME),
         storage.getItem(KEY_STARTED),
         storage.getItem(KEY_WEEK),
@@ -64,8 +68,10 @@ export function StoreProvider({ children }) {
         storage.getItem(KEY_DATA),
         storage.getItem(KEY_REMINDER),
         storage.getItem(KEY_FREEHOURS),
+        storage.getItem(KEY_ALLMET),
       ]);
       if (t === 'light' || t === 'dark') setThemeName(t);
+      if (am === '1') setAllMetFired(true);
       const fhNum = Number(fh);
       if (fh != null && Number.isFinite(fhNum)) {
         setFreeHoursState(Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, fhNum)));
@@ -88,6 +94,7 @@ export function StoreProvider({ children }) {
         try {
           const data = JSON.parse(d);
           if (Array.isArray(data?.identities) && data.identities.length) setIdentities(data.identities);
+          if (Array.isArray(data?.retired)) setRetired(data.retired);
           if (data?.drift) setDrift(data.drift);
           if (data?.relax) setRelax(data.relax);
           if (Array.isArray(data?.sessions)) setSessions(data.sessions);
@@ -128,8 +135,8 @@ export function StoreProvider({ children }) {
   // completes. Written as one atomic blob (no partial/half-saved states).
   useEffect(() => {
     if (!hydrated) return;
-    storage.setItem(KEY_DATA, JSON.stringify({ identities, drift, relax, sessions }));
-  }, [hydrated, identities, drift, relax, sessions]);
+    storage.setItem(KEY_DATA, JSON.stringify({ identities, retired, drift, relax, sessions }));
+  }, [hydrated, identities, retired, drift, relax, sessions]);
 
   // Single transient toast with one shared timer: clear any pending dismissal
   // before showing a new one (so rapid toasts don't cut each other off), and
@@ -199,6 +206,24 @@ export function StoreProvider({ children }) {
   }, []);
   const closeLog = useCallback(() => setLogOpen(false), []);
 
+  const closeAllMet = useCallback(() => setAllMetOpen(false), []);
+
+  // Whole-week triumph — fire as soon as every active identity has met its
+  // intention and we haven't celebrated yet this week. Reactive (watches state),
+  // so it catches *any* path to all-met: a log, the end-of-day review, planning
+  // intentions down, or retiring the last unmet identity. Gated on `hydrated`
+  // (no fire mid-load) and the persisted per-week flag (shows once; commitWeekPlan
+  // re-arms it). desired 0 (rested) counts as trivially met.
+  useEffect(() => {
+    if (!hydrated || allMetFired) return;
+    const allMet = identities.length > 0 && identities.every((i) => i.actual >= i.desired);
+    if (!allMet) return;
+    setAllMetFired(true);
+    storage.setItem(KEY_ALLMET, '1');
+    setAllMetOpen(true);
+    setCelebrate(null); // the triumph supersedes any single-identity celebration
+  }, [hydrated, allMetFired, identities]);
+
   // opts.silent suppresses the per-item toast (the end-of-day review applies
   // several logs at once and shows a single summary toast instead).
   const commitLog = useCallback((idn, mins, note, opts) => {
@@ -226,7 +251,12 @@ export function StoreProvider({ children }) {
     // did this log push the identity from under its intention to met? (celebrate
     // once, on the crossing — not every log after it's already met)
     const cur = identities.find((x) => x.id === idn.id);
-    const metNow = cur && cur.desired > 0 && cur.actual < cur.desired && Math.min(60, cur.actual + bump) >= cur.desired;
+    const newActual = cur ? Math.min(60, cur.actual + bump) : 0;
+    const metNow = cur && cur.desired > 0 && cur.actual < cur.desired && newActual >= cur.desired;
+    // projected list (only `actual` matters for the all-met check) — kept as a
+    // concrete array for the transition test; the state update stays functional
+    // so batched (review) logs still compose correctly.
+    const nextIdentities = identities.map((i) => (i.id === idn.id ? { ...i, actual: newActual } : i));
 
     setIdentities((prev) =>
       prev.map((i) =>
@@ -250,13 +280,32 @@ export function StoreProvider({ children }) {
     });
     setSessions((s) => [{ id: idn.id, label: title || idn.name + ' session', mins, when: 'Just now' }, ...s]);
     setLogOpen(false);
-    // the celebration replaces the toast on the crossing log; batch (silent) logs
-    // skip it so a multi-identity review doesn't pile up overlays
-    if (metNow && !silent) setCelebrate({ ...cur, actual: Math.min(60, cur.actual + bump) });
+    // if this log completes the week, let the reactive all-met effect own the
+    // moment (whole-week triumph > single-identity crossing > plain toast) — skip
+    // the single celebration/toast so they don't flash under the triumph.
+    const willFireAllMet = !allMetFired && nextIdentities.length > 0 && nextIdentities.every((i) => i.actual >= i.desired);
+    if (willFireAllMet) return;
+    if (metNow && !silent) setCelebrate({ ...cur, actual: newActual });
     else if (!silent) showToast({ kind: 'log', name: idn.name, mins, idn });
-  }, [identities, relax, showToast]);
+  }, [identities, relax, showToast, allMetFired]);
 
   const clearCelebrate = useCallback(() => setCelebrate(null), []);
+
+  // Retire an identity: pull it from the active set (lists, visualizations, log
+  // targets, alignment) but keep it in `retired` so its past sessions still
+  // resolve a name/glyph/color in history. Closes the Detail screen it came from.
+  const retireIdentity = useCallback(
+    (id) => {
+      const found = identities.find((i) => i.id === id);
+      if (!found) return;
+      setIdentities((prev) => prev.filter((i) => i.id !== id));
+      setRetired((r) => [found, ...r.filter((x) => x.id !== id)]);
+      setDetail(null);
+      setCosmosFocus(null);
+      showToast({ kind: 'retire', name: found.name });
+    },
+    [identities, showToast]
+  );
 
   // End-of-day review: apply several logs at once. entries: [{ id, mins }].
   // Reuses commitLog per entry (so drift reclaim / relax spill / sessions all
@@ -277,6 +326,8 @@ export function StoreProvider({ children }) {
         }
       });
       setReview(false);
+      // if the batch completed the week, the reactive all-met effect fires the
+      // triumph (over this toast); otherwise the summary toast stands alone.
       if (count > 0) showToast({ kind: 'review', count, mins: totalMins });
     },
     [identities, relax, commitLog, showToast]
@@ -288,6 +339,9 @@ export function StoreProvider({ children }) {
     setIdentities((prev) => prev.map((i) => (plan[i.id] != null ? { ...i, desired: plan[i.id] } : i)));
     setWeekPlanned(true);
     storage.setItem(KEY_WEEK, '1');
+    // re-planning re-arms the whole-week celebration (new intentions to meet)
+    setAllMetFired(false);
+    storage.removeItem(KEY_ALLMET);
     setPlanOpen(false);
     showToast({ kind: 'plan' });
   }, [showToast]);
@@ -374,6 +428,8 @@ export function StoreProvider({ children }) {
       setForm,
       identities,
       setIdentities,
+      retired,
+      retireIdentity,
       drift: driftView,
       relax,
       sessions,
@@ -407,6 +463,8 @@ export function StoreProvider({ children }) {
       commitReview,
       celebrate,
       clearCelebrate,
+      allMetOpen,
+      closeAllMet,
       reminder,
       setReminderEnabled,
       setReminderTime,
@@ -420,12 +478,12 @@ export function StoreProvider({ children }) {
       colorsFor: (idn) => identityColors(idn, themeObj),
     }),
     [
-      theme, themeObj, setTheme, started, hydrated, tab, goTo, form, setForm, identities, driftView,
+      theme, themeObj, setTheme, started, hydrated, tab, goTo, form, setForm, identities, retired, retireIdentity, driftView,
       relax, sessions, align, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
       toggleDriftApp, addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
       focusCosmos, clearCosmos, detail, openDetail, closeDetail, review, openReview, closeReview, commitReview,
-      celebrate, clearCelebrate, reminder, setReminderEnabled, setReminderTime, freeHours, setFreeHours,
+      celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, freeHours, setFreeHours,
       setDesired, enter, restart, toast,
     ]
   );

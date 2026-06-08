@@ -129,6 +129,7 @@ export default function ConstellationViz({
   onFocus,
   onRelease,
   interactive = true, // when false (e.g. onboarding reveal), taps don't focus
+  showLabels = true, // false for the celebration figure (figure-only, no text)
 }) {
   const ctx = useTheme();
   const t = themeObj || ctx.t;
@@ -308,12 +309,16 @@ export default function ConstellationViz({
                 <Circle cx={sx} cy={sy} r={coreR} fill={c.color} opacity={bright} />
                 <Circle cx={sx} cy={sy} r={coreR} fill="#fff" opacity={0.2 * fill} />
                 {/* labels */}
-                <SvgText x={sx} y={sy + haloR + 15} textAnchor="middle" fontFamily={sans(600)} fontSize={13} fill={t.ink}>
-                  {idn.name}
-                </SvgText>
-                <SvgText x={sx} y={sy + haloR + 30} textAnchor="middle" fontFamily={sans(600)} fontSize={11.5} fill={t.inkFaint}>
-                  {idn.actual}% · {idn.desired}%
-                </SvgText>
+                {showLabels && (
+                  <>
+                    <SvgText x={sx} y={sy + haloR + 15} textAnchor="middle" fontFamily={sans(600)} fontSize={13} fill={t.ink}>
+                      {idn.name}
+                    </SvgText>
+                    <SvgText x={sx} y={sy + haloR + 30} textAnchor="middle" fontFamily={sans(600)} fontSize={11.5} fill={t.inkFaint}>
+                      {idn.actual}% · {idn.desired}%
+                    </SvgText>
+                  </>
+                )}
               </G>
             );
           })}

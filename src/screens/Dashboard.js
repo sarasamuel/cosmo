@@ -63,8 +63,8 @@ function CosmosHero({ identities, onTap, name }) {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
             <View style={{ flexDirection: 'row', backgroundColor: dk.surface3, borderRadius: 999, padding: 2, gap: 2, borderWidth: 1, borderColor: dk.line2 }}>
               {[
-                { f: 'constellation', label: 'Constellation' },
                 { f: 'orbit', label: 'Orbit' },
+                { f: 'constellation', label: 'Constellation' },
               ].map((o) => {
                 const on = form === o.f;
                 return (
@@ -83,21 +83,29 @@ function CosmosHero({ identities, onTap, name }) {
             it isn't cramped on narrow phones. A boundary keeps a viz render error
             contained to this card instead of white-screening the app. */}
         <View style={bleed(SPACING.cosmosCardPad)}>
-          <ErrorBoundary
-            fallback={
-              <View style={{ height: 220, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30 }}>
-                <Text style={{ fontFamily: sans(600), fontSize: 14, color: dk.inkFaint, textAlign: 'center' }}>
-                  Couldn’t render your cosmos right now.
-                </Text>
-              </View>
-            }
-          >
-            {isConst ? (
-              <ConstellationViz identities={identities} onLog={onTap} name={name} themeObj={dk} {...focusProps} />
-            ) : (
-              <CosmosViz identities={identities} onLog={onTap} name={name} themeObj={dk} {...focusProps} />
-            )}
-          </ErrorBoundary>
+          {identities.length === 0 ? (
+            <View style={{ height: 220, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 }}>
+              <Text style={{ fontFamily: serif(500, true), fontSize: 18, color: dk.inkSoft, textAlign: 'center', lineHeight: 26 }}>
+                An empty sky, for now. Add an identity to light the first star.
+              </Text>
+            </View>
+          ) : (
+            <ErrorBoundary
+              fallback={
+                <View style={{ height: 220, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30 }}>
+                  <Text style={{ fontFamily: sans(600), fontSize: 14, color: dk.inkFaint, textAlign: 'center' }}>
+                    Couldn’t render your cosmos right now.
+                  </Text>
+                </View>
+              }
+            >
+              {isConst ? (
+                <ConstellationViz identities={identities} onLog={onTap} name={name} themeObj={dk} {...focusProps} />
+              ) : (
+                <CosmosViz identities={identities} onLog={onTap} name={name} themeObj={dk} {...focusProps} />
+              )}
+            </ErrorBoundary>
+          )}
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 18, marginTop: 2 }}>
           <LegendItem filled label={'fill = your time'} dk={dk} />
@@ -110,13 +118,15 @@ function CosmosHero({ identities, onTap, name }) {
 
 export default function Dashboard() {
   const { t, colorsFor } = useTheme();
-  const { identities, drift, relax, sessions, align, openLog, focusCosmos, toggleDriftApp, week, weekPlanned, openPlan } = useStore();
+  const { identities, retired, drift, relax, sessions, align, openLog, openAdd, focusCosmos, toggleDriftApp, week, weekPlanned, openPlan } = useStore();
   const [driftOpen, setDriftOpen] = useState(false);
   const relaxC = colorsFor(relax);
   const pad = useScreenPad();
 
-  const lead = [...identities].sort((a, b) => b.actual - b.desired - (a.actual - a.desired))[0];
-  const lag = [...identities].sort((a, b) => a.actual - a.desired - (b.actual - b.desired))[0];
+  const hasIdentities = identities.length > 0;
+  // undefined when every identity has been retired — guard all reads below
+  const lead = hasIdentities ? [...identities].sort((a, b) => b.actual - b.desired - (a.actual - a.desired))[0] : null;
+  const lag = hasIdentities ? [...identities].sort((a, b) => a.actual - a.desired - (b.actual - b.desired))[0] : null;
   const tracked = drift.apps.filter((a) => a.tracked);
   const untracked = drift.apps.filter((a) => !a.tracked);
   const maxApp = Math.max(...tracked.map((a) => a.pct), 1);
@@ -142,21 +152,34 @@ export default function Dashboard() {
         <CosmosHero identities={identities} onTap={openLog} name={USER.name} />
       </View>
 
-      {/* alignment summary */}
-      <Card style={{ marginTop: 18, padding: 26, flexDirection: 'row', gap: 24, alignItems: 'center' }}>
-        <AlignmentRing value={align} />
-        <View style={{ flex: 1 }}>
-          <SectionTitle style={{ marginBottom: 8 }}>This week’s balance</SectionTitle>
-          <Text style={{ fontSize: 15.5, lineHeight: 23, color: t.inkSoft }}>
-            Your hours leaned toward <Text style={{ color: t.ink, fontFamily: sans(700) }}>{lead.name}</Text>, while{' '}
-            <Text style={{ color: t.ink, fontFamily: sans(700) }}>{lag.name}</Text> sits furthest below your intention.
+      {/* alignment summary — or an empty state once every identity is retired */}
+      {hasIdentities ? (
+        <Card style={{ marginTop: 18, padding: 26, flexDirection: 'row', gap: 24, alignItems: 'center' }}>
+          <AlignmentRing value={align} />
+          <View style={{ flex: 1 }}>
+            <SectionTitle style={{ marginBottom: 8 }}>This week’s balance</SectionTitle>
+            <Text style={{ fontSize: 15.5, lineHeight: 23, color: t.inkSoft }}>
+              Your hours leaned toward <Text style={{ color: t.ink, fontFamily: sans(700) }}>{lead.name}</Text>, while{' '}
+              <Text style={{ color: t.ink, fontFamily: sans(700) }}>{lag.name}</Text> sits furthest below your intention.
+            </Text>
+            <Pill bg={t.ink} onPress={() => openLog(lag)} style={{ marginTop: 14, alignSelf: 'flex-start' }}>
+              <Icon name="plus" size={15} color={t.bg} />
+              <Text style={{ color: t.bg, fontFamily: sans(700), fontSize: 13 }}>Tend to {lag.name}</Text>
+            </Pill>
+          </View>
+        </Card>
+      ) : (
+        <Card style={{ marginTop: 18, padding: 26, alignItems: 'center' }}>
+          <Text style={{ fontFamily: serif(500), fontSize: 22, color: t.ink, textAlign: 'center', marginBottom: 8 }}>Your cosmos is empty</Text>
+          <Text style={{ fontSize: 15, lineHeight: 22, color: t.inkSoft, textAlign: 'center', marginBottom: 18 }}>
+            You’ve retired every identity. Add one to begin tending your time again.
           </Text>
-          <Pill bg={t.ink} onPress={() => openLog(lag)} style={{ marginTop: 14, alignSelf: 'flex-start' }}>
+          <Pill bg={t.ink} onPress={openAdd} style={{ paddingHorizontal: 20, paddingVertical: 11 }}>
             <Icon name="plus" size={15} color={t.bg} />
-            <Text style={{ color: t.bg, fontFamily: sans(700), fontSize: 13 }}>Tend to {lag.name}</Text>
+            <Text style={{ color: t.bg, fontFamily: sans(700), fontSize: 13.5 }}>Add an identity</Text>
           </Pill>
-        </View>
-      </Card>
+        </Card>
+      )}
 
       {/* breakdown */}
       <Card style={{ marginTop: 18, paddingHorizontal: 24, paddingVertical: 20 }}>
@@ -277,7 +300,8 @@ export default function Dashboard() {
         <SectionTitle style={{ marginBottom: 12 }}>Recent sessions</SectionTitle>
         <View style={{ gap: 10 }}>
           {sessions.slice(0, 4).map((s, k) => {
-            const idn = identities.find((i) => i.id === s.id) || drift;
+            // resolve retired identities too, so their past sessions keep their glyph/name
+            const idn = identities.find((i) => i.id === s.id) || retired.find((i) => i.id === s.id) || drift;
             const c = colorsFor(idn);
             return (
               <Card key={k} style={{ paddingVertical: 14, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 14 }}>

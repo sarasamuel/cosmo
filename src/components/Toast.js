@@ -21,7 +21,8 @@ export default function Toast({ toast, bottom = 130 }) {
 
   const isPlan = toast && toast.kind === 'plan';
   const isReview = toast && toast.kind === 'review';
-  const showCheck = isPlan || isReview; // both use the check badge, not an identity glyph
+  const isRetire = toast && toast.kind === 'retire';
+  const showCheck = isPlan || isReview || isRetire; // these use the check badge, not an identity glyph
   const c = toast && toast.idn ? colorsFor(toast.idn) : null;
   const label = !toast
     ? ''
@@ -29,6 +30,8 @@ export default function Toast({ toast, bottom = 130 }) {
     ? 'This week is set'
     : isReview
     ? `Today saved · ${toast.mins}m across ${toast.count} ${toast.count === 1 ? 'identity' : 'identities'}`
+    : isRetire
+    ? `${toast.name} retired · kept in your history`
     : toast.spill > 0
     ? `${toast.mins}m logged · over your allowance → Drift`
     : `${toast.mins}m of ${toast.name} logged`;

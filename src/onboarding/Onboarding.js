@@ -260,14 +260,14 @@ export default function Onboarding() {
             <Eyebrow style={{ marginBottom: 18 }}>Your cosmos</Eyebrow>
             <Text style={{ fontFamily: serif(500), fontSize: 32, color: t.ink, marginBottom: 10, textAlign: 'center' }}>A map of who you want to be.</Text>
             <Text style={{ fontSize: 16, color: t.inkSoft, marginBottom: 14, lineHeight: 24, textAlign: 'center', maxWidth: 440 }}>
-              These identities move together. Pick the view that speaks to you — you can switch anytime.
+              These identities move together. Pick the view that speaks to you — you can switch any time.
             </Text>
 
             {/* Constellation / Orbit toggle — the choice becomes the Portfolio default */}
             <View style={{ flexDirection: 'row', backgroundColor: t.surface2, borderRadius: 999, padding: 4, gap: 2, borderWidth: 1, borderColor: t.line }}>
               {[
-                { f: 'constellation', label: 'Constellation' },
                 { f: 'orbit', label: 'Orbit' },
+                { f: 'constellation', label: 'Constellation' },
               ].map((o) => {
                 const on = form === o.f;
                 return (

@@ -18,6 +18,7 @@ import WeekPlanSheet from './src/weekly/WeekPlanSheet';
 import AddIdentitySheet from './src/components/AddIdentitySheet';
 import CosmosFocusPanel from './src/components/CosmosFocusPanel';
 import IntentionMet from './src/components/IntentionMet';
+import AllIntentionsMet from './src/components/AllIntentionsMet';
 import Toast from './src/components/Toast';
 
 import Dashboard from './src/screens/Dashboard';
@@ -30,7 +31,7 @@ import Onboarding from './src/onboarding/Onboarding';
 
 function AppShell() {
   const { t } = useTheme();
-  const { tab, goTo, openLog, toast, detail, closeDetail, review, closeReview, celebrate, clearCelebrate } = useStore();
+  const { tab, goTo, openLog, toast, detail, closeDetail, review, closeReview, celebrate, clearCelebrate, allMetOpen, closeAllMet, identities, form } = useStore();
   const insets = useSafeAreaInsets();
 
   return (
@@ -64,6 +65,7 @@ function AppShell() {
       <WeekPlanSheet />
       <AddIdentitySheet />
       <IntentionMet idn={celebrate} onClose={clearCelebrate} />
+      <AllIntentionsMet open={allMetOpen} form={form} identities={identities} onClose={closeAllMet} onShare={closeAllMet} />
     </View>
   );
 }

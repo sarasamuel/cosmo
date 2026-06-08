@@ -92,6 +92,7 @@ export default function CosmosViz({
   onFocus,
   onRelease,
   interactive = true, // when false (e.g. onboarding reveal), taps don't focus
+  showLabels = true, // false for the celebration figure (figure-only, no text)
 }) {
   const ctx = useTheme();
   // when rendered inside the always-dark cosmos card, a themeObj override is
@@ -349,17 +350,19 @@ export default function CosmosViz({
                 />
                 <Circle cx={sx} cy={cy} r={inner} fill={c.color} />
                 {/* full identity name beneath the planet, fading with depth */}
-                <SvgText
-                  x={sx}
-                  y={cy + base + 13 * scale}
-                  textAnchor="middle"
-                  fontFamily={sans(600)}
-                  fontSize={12.5}
-                  fill={t.ink}
-                  opacity={isSel ? 1 : Math.min(1, depth + 0.2)}
-                >
-                  {idn.name}
-                </SvgText>
+                {showLabels && (
+                  <SvgText
+                    x={sx}
+                    y={cy + base + 13 * scale}
+                    textAnchor="middle"
+                    fontFamily={sans(600)}
+                    fontSize={12.5}
+                    fill={t.ink}
+                    opacity={isSel ? 1 : Math.min(1, depth + 0.2)}
+                  >
+                    {idn.name}
+                  </SvgText>
+                )}
               </G>
             );
           })}

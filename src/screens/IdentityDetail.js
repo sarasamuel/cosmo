@@ -5,7 +5,7 @@
    the data-model seeds so the screen previews standalone. `onBack` and the
    `onRest`/`onEdit`/`onRetire` handlers are optional hooks for later wiring. */
 import React from 'react';
-import { ScrollView, View, Text, Pressable } from 'react-native';
+import { ScrollView, View, Text, Pressable, Alert } from 'react-native';
 import { useStore, useTheme } from '../store/Store';
 import { Card, Glyph, Eyebrow, SectionTitle } from '../components/primitives';
 import Icon from '../components/Icon';
@@ -52,7 +52,7 @@ function ManageRow({ icon, title, subtitle, color, onPress, last }) {
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 16, fontFamily: sans(600), color: tint }}>{title}</Text>
-        <Text numberOfLines={1} style={{ fontSize: 13, fontFamily: sans(500), color: t.inkSoft, marginTop: 2 }}>{subtitle}</Text>
+        <Text style={{ fontSize: 13, fontFamily: sans(500), color: t.inkSoft, marginTop: 2, lineHeight: 18 }}>{subtitle}</Text>
       </View>
       <Icon name="chevron" size={18} stroke={2} color={t.inkFaint} />
     </Pressable>
@@ -67,7 +67,7 @@ export default function IdentityDetail({
   onRetire,
 }) {
   const { t, colorsFor } = useTheme();
-  const { identities, sessions } = useStore();
+  const { identities, sessions, retireIdentity, form } = useStore();
   const pad = useScreenPad();
 
   // Resolve the live identity from the store (by id) so the screen reflects
@@ -76,6 +76,16 @@ export default function IdentityDetail({
   const base = identityProp || IDENTITIES.find((i) => i.id === 'painter') || IDENTITIES[0];
   const identity = identities.find((i) => i.id === base.id) || base;
   const c = colorsFor(identity);
+
+  const confirmRetire = () =>
+    Alert.alert(
+      `Retire ${identity.name}?`,
+      `It will leave your ${form === 'constellation' ? 'constellation' : 'orbit'}, but will stay in your history. You can add it back any time.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Retire', style: 'destructive', onPress: () => retireIdentity(identity.id) },
+      ]
+    );
 
   const monthDays = MONTH.done[identity.id] || [];
   const moments = sessions.filter((s) => s.id === identity.id);
@@ -225,7 +235,7 @@ export default function IdentityDetail({
           title="Retire this identity"
           subtitle="Let it rest for now — kept in your history"
           color={t.warn}
-          onPress={onRetire}
+          onPress={confirmRetire}
           last
         />
       </Card>
