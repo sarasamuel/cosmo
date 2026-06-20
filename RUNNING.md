@@ -96,10 +96,12 @@ rm -rf ios/Pods ios/Podfile.lock && npx pod-install ios
 | Theme tokens (light/dark) | [`src/theme/theme.js`](src/theme/theme.js) |
 | OKLCH → RGB conversion | [`src/lib/color.js`](src/lib/color.js) |
 | Nightly reminder (local notifications) | [`src/lib/notifications.js`](src/lib/notifications.js) |
+| Cloud backup (auth + sync) | [`src/lib/auth.js`](src/lib/auth.js), [`src/lib/supabase.js`](src/lib/supabase.js), [`src/lib/sync.js`](src/lib/sync.js) |
 | Fonts (Newsreader / Hanken Grotesk) | [`src/theme/fonts.js`](src/theme/fonts.js) |
-| Cosmos 3D visualization | [`src/viz/CosmosViz.js`](src/viz/CosmosViz.js) |
+| Visualizations (orbit cosmos / constellation) | [`src/viz/CosmosViz.js`](src/viz/CosmosViz.js), [`src/viz/ConstellationViz.js`](src/viz/ConstellationViz.js) |
 | Screens | [`src/screens/`](src/screens/) |
-| Onboarding (5 steps) | [`src/onboarding/`](src/onboarding/) |
+| Weekly planning + history UI | [`src/weekly/`](src/weekly/) |
+| Onboarding (6 steps) | [`src/onboarding/`](src/onboarding/) |
 | Shared components | [`src/components/`](src/components/) |
 
 ### Notes on the web → native port

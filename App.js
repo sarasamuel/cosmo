@@ -1,6 +1,6 @@
 /* Cosmo — app root. Loads fonts, mounts the store, and routes between the
    onboarding flow and the main tabbed shell. */
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +21,7 @@ import CosmosFocusPanel from './src/components/CosmosFocusPanel';
 import IntentionMet from './src/components/IntentionMet';
 import AllIntentionsMet from './src/components/AllIntentionsMet';
 import Toast from './src/components/Toast';
+import SplashScreen from './src/components/SplashScreen';
 
 import Dashboard from './src/screens/Dashboard';
 import Insights from './src/screens/Insights';
@@ -76,6 +77,7 @@ function AppShell() {
 function Root() {
   const { started, hydrated, theme, authSeen } = useStore();
   if (!hydrated) {
+    // the splash overlay covers this gap; keep a deep-space fill behind it
     return <View style={{ flex: 1, backgroundColor: theme === 'light' ? '#ecebf6' : '#0a0a15' }} />;
   }
   return (
@@ -108,16 +110,37 @@ function AppCrash({ onRetry }) {
   );
 }
 
+// Show the full launch intro only on a genuine cold start. This module-level
+// flag lives in the JS context, which is fresh on every cold start and reset
+// then — so warm resumes within a session don't replay the intro, without any
+// persistent storage.
+let splashShownThisSession = false;
+
+// The cold-start splash overlay. Sits above the whole app and reveals it once
+// fonts are loaded and the store has hydrated (the app-ready signal), then
+// unmounts itself completely.
+function SplashOverlay({ fontsLoaded }) {
+  const { hydrated } = useStore();
+  const [visible, setVisible] = useState(!splashShownThisSession);
+  if (!visible) return null;
+  return (
+    <SplashScreen
+      appReady={fontsLoaded && hydrated}
+      onHidden={() => { splashShownThisSession = true; setVisible(false); }}
+    />
+  );
+}
+
 export default function App() {
   const [fontsLoaded] = useAppFonts();
-  if (!fontsLoaded) {
-    return <View style={{ flex: 1, backgroundColor: '#0a0a15' }} />;
-  }
   return (
     <ErrorBoundary fallback={(err, reset) => <AppCrash onRetry={reset} />}>
       <SafeAreaProvider>
         <StoreProvider>
-          <Root />
+          {/* mount the store immediately so hydration runs behind the splash;
+              Root renders once fonts are ready, the splash covers the gap */}
+          {fontsLoaded ? <Root /> : null}
+          <SplashOverlay fontsLoaded={fontsLoaded} />
         </StoreProvider>
       </SafeAreaProvider>
     </ErrorBoundary>

@@ -1,36 +1,38 @@
-# Handoff: Cosmo — Identity-Balance App (Onboarding + Drift Tracking)
+# Cosmo — an identity-balance app
 
 ## Overview
-**Cosmo** is a mobile app that reframes time management around **who you want to become** rather than a to-do list. The user defines a set of **identities** ("Writer", "Reader", "Engineer", "Musician", "Painter", …), declares how much of their time each one *deserves* (intention), logs sessions as they live, and the app visualizes the gap between intention and reality as an orbiting "cosmos" plus a set of balance metrics.
+**Cosmo** reframes time around **who you want to become** rather than a to-do list. You define a set of **identities** ("Writer", "Reader", "Engineer", "Musician", "Painter", …), declare how much of your week each one *deserves* (its **intention**), log sessions as you live, and the app shows the gap between intention and reality as an orbiting **cosmos** (or a **constellation**) plus a set of gentle, no-guilt balance metrics.
 
-This document is the design spec for the app, with particular depth on two core features:
+Two ideas anchor the product:
 
-1. **Onboarding cadence step** — the user chooses to budget their time **by day, week, or month**, and sets how many **free hours** they actually have in that window. Every identity's percentage is then scaled into real hours.
-2. **"Free Time" persona + app-usage tracking** — a default-selected, deselectable "Free Time" identity that reserves guilt-free hours for rest/scrolling. Within it, the user opts to **track specific apps** (Instagram, TikTok, mobile games, etc.). Tracked-app time aggregates into a single **Drift** bucket shown across the portfolio and all metrics.
+1. **A weekly rhythm.** Time is balanced **per week**. You set a plan for the week (how much of your free hours each identity gets), live it, and reflect. The week is a real rolling calendar window, so it resets on its own — last week's sessions simply fall out of "this week" once the date crosses the boundary.
+2. **Rest is intentional, not a failure.** A **Relaxation** allowance reserves guilt-free hours for rest. Time logged within the allowance fills Relaxation; beyond it the allowance just caps. Rest is never something you "fail."
 
-## About this document
-This README is the **design spec** for Cosmo — the intended look, layout, copy, interactions, data model, and tokens. It is the source of truth for *design intent*. The running app is implemented in **React Native / Expo (SDK 55)** under `src/` (root: `App.js`), which is the source of truth for *current behavior* and has evolved past this spec in places (e.g. weekly planning, nightly reminder + end-of-day review).
+> **Heads-up for readers of older revisions:** earlier versions of this doc described a "Drift / Free Time" app-usage-tracking feature. That model was removed. The app now uses the simpler **Relaxation allowance** described here — there is no app tracking, no "Drift" bucket.
 
-> The original HTML/React prototype (`design_files/`) this was handed off as has been **removed** from the repo. Where this document names prototype files — `data.js`, `onboarding.jsx`, `screens.jsx`, `screens2.jsx`, `logsheet.jsx`, `components.jsx`, `viz.jsx` — the equivalent live code lives under `src/`. See [`RUNNING.md`](RUNNING.md) for the file map and how to run the app.
-
-## Fidelity
-**High-fidelity (hifi).** Colors, typography, spacing, copy, and interactions are final and intended to be matched closely. Exact token values are listed below in *Design Tokens*. Recreate the UI faithfully using the target codebase's primitives; do not introduce a new visual language.
-
-One caveat: the prototype renders inside a **fixed 868×1228 "device" frame** that is scaled to fit the browser. That scaler is a *prototype-only* concern — on a real device you render full-screen and drop the bezel/scaling logic entirely.
+## Status & source of truth
+Cosmo is implemented in **React Native / Expo (SDK 55)** under `src/` (root: `App.js`). The **code is the source of truth for behavior**; this README is the product/design overview. For setup, how to run it, and the full file map, see [`RUNNING.md`](RUNNING.md).
 
 ---
 
 ## Architecture
-State lives in a single React context store ([`src/store/Store.js`](src/store/Store.js)); data + helpers in [`src/data/data.js`](src/data/data.js); screens under [`src/screens/`](src/screens/), visualizations under [`src/viz/`](src/viz/). See [`RUNNING.md`](RUNNING.md) for the full file map.
+State lives in a single React context store ([`src/store/Store.js`](src/store/Store.js)); the data model + derivations are in [`src/data/data.js`](src/data/data.js) (**read this first**); screens under [`src/screens/`](src/screens/), visualizations under [`src/viz/`](src/viz/), the weekly UI under [`src/weekly/`](src/weekly/), onboarding under [`src/onboarding/`](src/onboarding/), and platform glue (color, storage, notifications, auth, sync, layout) under [`src/lib/`](src/lib/).
 
-Key state in the store:
-- `theme` — `'dark'` (the hero/default) or `'light'`; persisted to AsyncStorage.
-- `started` — whether onboarding is complete; persisted.
-- `tab` — active bottom-tab: `'home' | 'insights' | 'reflect' | 'identities'`.
-- `identities` — array of identity objects (see data model).
-- `drift` — the Drift object, including its `apps` array (see below); `actual` is derived, not stored.
-- `relax`, `sessions` — the Relaxation allowance and logged sessions (most-recent-first).
-- transient UI: log-sheet, week-plan sheet, toast, cosmos focus, Detail / end-of-day-review screens.
+Key state in the store (persisted to AsyncStorage unless noted; the mutable domain state is stored as one atomic blob and also backed up to the cloud when signed in):
+- `theme` — `'dark'` (the hero/default) or `'light'`.
+- `form` — visualization style: `'orbit'` (cosmos) or `'constellation'`.
+- `started` — whether onboarding is complete.
+- `tab` — active bottom tab: `'home' | 'insights' | 'reflect' | 'identities'`.
+- `identities` — array of identity objects (see data model). The editable fields are stored; `actual`, `lastActiveDays`, and `streak` are **derived live from `sessions`**.
+- `retired` — retired identities, kept for history so their past sessions still resolve a name/color.
+- `relax` — the Relaxation allowance (`desired` share + `tracked` flag).
+- `sessions` — logged sessions, most-recent-first, each carrying a real epoch-ms `ts`.
+- `planHistory` — `{ weekStartMs: { identityId: pct } }`; a snapshot of each committed weekly plan, so completed weeks are scored against the intention that was actually in force then.
+- `freeHours` — the weekly free-hours pool the per-identity percentages scale into.
+- `reminder` — daily local-notification prefs (`{ enabled, hour, minute }`).
+- `weekPlanned`, `allMetWeek` — whether this week's plan is committed; the week-start the whole-week celebration last fired for.
+- `session`, `userName` — Supabase auth session + display name (cloud backup; the app is fully usable offline / signed out).
+- transient UI: log sheet, week-plan sheet, add-identity sheet, backup sheet, toast, cosmos focus, identity Detail screen, end-of-day review, celebration overlays.
 
 ---
 
@@ -39,128 +41,106 @@ Key state in the store:
 ### Identity
 ```js
 { id, name, glyph,        // glyph = single uppercase initial shown in the colored disc
-  hue,                    // base hue (deg) for palette generation
-  color, soft, deep,      // CSS color refs (see tokens)
-  desired,                // intended % of time (0–50, step 5)
-  actual,                 // lived % this period
-  lastActiveDays,         // days since last logged session
-  streak }                // consecutive-day streak
+  palette,                // canonical personas: a palette key (writer/reader/engineer/musician/painter/relax)
+  hue,                    // runtime-added personas: a numeric base hue (deg)
+  desired,                // intended % of the week (0–50, step 5)
+  // derived live from sessions (NOT stored):
+  actual,                 // points lived this week (≈ 12 min = 1 pt; capped at 60)
+  lastActiveDays,         // whole days since the most recent session (99 = never)
+  streak }                // consecutive-day streak ending today/yesterday
 ```
-Canonical seed identities: Writer (desired 25 / actual 12), Reader (20/8), Engineer (20/28), Musician (20/5), Painter (15/3).
+Colors are resolved at render time by `identityColors(idn, theme)` ([`src/theme/theme.js`](src/theme/theme.js)): canonical personas read their per-theme `palette` entry; runtime ones derive `color/soft/deep` from `hue`. The five canonical seed personas are Writer, Reader, Engineer, Musician, Painter.
 
-### Drift (the time-sink bucket)
+### Relaxation
 ```js
-DRIFT = {
-  id:'drift', name:'Drift', glyph:'∞', hue:280,
-  color:'var(--c-drift)', soft:'var(--c-drift-soft)', deep:'#4a4757',
-  desired: 0,                       // you never intend to drift
-  actual: driftSum(apps),           // = sum of pct over tracked apps
-  apps: DRIFT_APPS                   // breakdown, below
-}
+RELAX = {
+  id: 'relax', name: 'Relaxation', glyph: '♾', palette: 'relax',
+  desired,            // the weekly share set aside for rest (0 = not reserved → not tracked)
+  actual,             // = min(desired, points lived as 'relax' this week)
+  isRelax: true,
+  tracked }           // false when desired is 0
 ```
+Relaxation fills up to its allowance; time beyond it caps (rest never "spills" or counts as a miss).
 
-### Drift apps (tracked-usage breakdown)
-```js
-DRIFT_APPS = [
-  { id:'instagram', name:'Instagram',    glyph:'I', pct:13, mins:184, tracked:true  },
-  { id:'tiktok',    name:'TikTok',       glyph:'T', pct:10, mins:142, tracked:true  },
-  { id:'games',     name:'Mobile games', glyph:'G', pct:9,  mins:121, tracked:true  },
-  { id:'youtube',   name:'YouTube',      glyph:'Y', pct:7,  mins:96,  tracked:false },
-  { id:'x',         name:'X',            glyph:'X', pct:5,  mins:64,  tracked:false },
-  { id:'reddit',    name:'Reddit',       glyph:'R', pct:4,  mins:58,  tracked:false },
-  { id:'facebook',  name:'Facebook',     glyph:'F', pct:3,  mins:41,  tracked:false },
-]
-```
-- `pct` = the app's share of waking time; `mins` = minutes this week.
-- `tracked` = whether the user has opted to count it. **Only tracked apps contribute to Drift.**
-- `driftSum(apps)` = `apps.filter(tracked).reduce(sum of pct)`. Drift's `actual` is always kept equal to this.
-- Default tracked set: Instagram, TikTok, Mobile games → Drift `actual` = 32%, 3 apps, 447 min (≈7h 27m) this week.
+### Sessions & weekly derivations
+A logged session is `{ id, label, mins, ts }`. Everything time-based derives from sessions against the current calendar week ([`src/data/data.js`](src/data/data.js)):
+- `SESSION_POINTS(mins) = max(1, round(mins / 12))` — a session's contribution in the same "points" unit as `desired`.
+- `weekPoints(sessions, id)` — points an identity earned this week (callers clamp: identities at 60, Relaxation at its allowance).
+- `daysSinceLast`, `dayStreak` — last-active + streak, from real timestamps.
+- `pastWeeks(sessions, identities, planHistory)` / `recentWeeksFor(…)` — real weekly history (one entry per completed week that had activity), each scored against `planForWeek(planHistory, weekStart, idn)` — the plan in force that week, falling back to the current `desired` only for weeks older than any recorded plan.
+- `monthActivity(sessions)` — which days this month each identity got tended (the dot strips / activity tracker).
 
 ### Catalog (onboarding identity options)
-`Writer, Reader, Engineer, Musician, Painter, Athlete, Chef, Photographer, Gardener, Linguist, Designer, Filmmaker, Dancer, Naturalist, Poet, Free Time`. **"Free Time"** is a special entry — see below.
+`Writer, Reader, Engineer, Journaler, Musician, Painter, Athlete, Chef, Photographer, Gardener, Linguist, Designer, Filmmaker, Dancer, Naturalist, Poet` — plus anything the user types in.
 
 ### Color assignment
-`data.js` exposes a palette system so every persona gets a **distinct** hue:
-- `PALETTE` — 18 well-separated OKLCH hues; the first 5 match the canonical identities.
-- `paletteColor(index)` — color by position (used in onboarding so the Nth chosen persona gets the Nth palette color).
-- `assignColor(existing)` — picks the next hue ≥22° away from every hue already in use; golden-angle fallback when the palette is exhausted (used when adding a new identity at runtime).
-- **"Free Time" is the exception** — it always wears the neutral Drift tone (`--c-drift`), never a jewel hue, to signal it is intentional slack, not an aspiration.
+[`src/data/data.js`](src/data/data.js) provides a palette system so every persona gets a **distinct** hue:
+- `PALETTE` — 18 well-separated OKLCH hues; the first five match the canonical identities.
+- `paletteHue(index)` — hue by position (used in onboarding so the Nth chosen persona gets the Nth palette hue).
+- `assignHue(existing)` — picks the next hue ≥22° away from every hue already in use; maximally-distant fallback when the palette is exhausted (used when adding an identity at runtime).
 
 ---
 
-## Screens / Views
+## Onboarding
+A **6-step** flow (progress dots at the bottom, indices 0–5), rendered while `started === false` ([`src/onboarding/Onboarding.js`](src/onboarding/Onboarding.js)). On "Enter Cosmos" it builds the chosen identities (with their first-week allocations as `desired`) into the store, records that allocation as the first entry of the plan history, **starts with no logged sessions**, carries the free-hours + rest allowance in, and flips `started`.
 
-### 1. Onboarding (`onboarding.jsx`)
-A 5-step flow (progress dots at the bottom, indices 0–4). Rendered when `started === false`.
+- **Step 0 — Welcome.** Constellation mark, eyebrow "Cosmo", serif headline *"You are not your to-do list."*, "Begin".
+- **Step 1 — Choose identities.** Multi-select chips from the catalog + an "Add your own…" field. Default selection: Writer, Reader, Engineer, Musician, Painter. Continue is enabled at ≥2 chosen.
+- **Step 2 — Cadence + free time** ([`OnbCadence`](src/onboarding/OnbCadence.js)). Time is fixed to a **weekly** rhythm; a card + slider set the **free hours this week** (`FREE_HOURS_WEEK`: min 5h, max 90h, step 1, default **35h**) — the pool every percentage scales into real hours.
+- **Step 3 — Rest allowance** ([`OnbRest`](src/onboarding/OnbRest.js)). Set the Relaxation share of the week (default 15%).
+- **Step 4 — Allocate** ([`OnbAllocate`](src/onboarding/OnbAllocate.js)). A slider row per chosen persona (0–50, step 5) showing percent + the real-hours equivalent; a running total that turns green at 100%.
+- **Step 5 — Reveal.** Pick the **Orbit / Constellation** view (becomes the default), preview your cosmos, "Enter Cosmos".
 
-**Step 0 — Welcome.** Centered. A small SVG constellation (5 colored nodes wired to a central ink dot, staggered fade-in). Eyebrow "Cosmo"; serif headline *"You are not your to-do list."* (second line italic); supporting paragraph; primary "Begin" button.
-
-**Step 1 — Choose identities.** Eyebrow "Step one"; headline "Who do you want to be?". A wrap of **chips** from the catalog (multi-select). Selected chips fill with the persona's palette color + white text + a check icon. Below the chips: a text input ("Add your own…") + "Add" button to append custom personas. Footer shows "N chosen" and a primary "Continue" (disabled until ≥2 chosen).
-- **Default selection:** Writer, Reader, Engineer, Musician, Painter, **and Free Time**.
-- **Free Time sub-panel** (renders only when Free Time is selected):
-  - A caption row: a small drift-colored dot + "**Free Time** reserves guilt-free hours for rest, scrolling, nothing in particular. Deselect it to give every hour to an identity."
-  - A **card** titled "Track app usage" (with an "optional" label) and copy: "Choose which apps to count. Their time rolls up into your **Drift** — so you can see where Free Time really goes."
-  - A wrap of app chips (from `DRIFT_APPS`). Tracked apps fill with `--c-drift` + white + check icon; untracked show a "+" icon. Tapping toggles `tracked`. Initial tracked state mirrors `DRIFT_APPS` defaults.
-
-**Step 2 — Cadence + free time** (`OnbCadence`). Eyebrow "Step two"; headline "How do you keep time?"; copy "Balance can be measured a day, a week, or a month at a time. Choose the rhythm that fits your life."
-  - A centered **Segmented control** with three options: **By day / By week / By month**.
-  - A **card** with: label "Free time {each day|each week|each month}" on the left, a large serif duration readout on the right (e.g. "7h"); helper copy "The hours that are truly yours to spend — after work, sleep, and obligations."; a **range slider**; min/max labels beneath.
-  - Slider ranges per cadence (`CADENCE` config):
-    - **day** — min 1h, max 16h, step 1, default **7h**
-    - **week** — min 5h, max 90h, step 1, default **35h**
-    - **month** — min 20h, max 360h, step 5, default **150h**
-  - **Switching cadence reseeds the slider to that rhythm's default.**
-  - **Day-only extra:** an "Your evening" block (moon icon) showing an illustrative window `clock(24 − freeHours) – 12:00 AM`, e.g. 7 free hours → "5:00 PM – 12:00 AM". This is purely illustrative of where the free block sits.
-  - Footer caption: "Every identity's share is scaled to this — so a percentage always means real hours." Back + Continue buttons.
-
-**Step 3 — Allocate** (`OnbAllocate`). Eyebrow "Step three"; headline "How much of you?"; copy "Divide your {duration} {each day/week/month} between them…". A running total line that turns green at exactly 100% ("· balanced") and amber otherwise. A card with one **slider row per selected persona** (min 0, max 50, step 5), each showing: a colored dot, the name, the **percent** (serif) **and the real-hours equivalent** beneath it (e.g. `freeHours × pct/100` formatted, with the cadence suffix `/day` `/wk` `/mo`). Back + Continue.
-
-**Step 4 — Reveal.** Eyebrow "Your cosmos"; headline "Here is the shape of you."; the `CosmosViz` visualization (non-interactive here); primary "Enter Cosmos" → completes onboarding (`onDone` → sets `started`).
-
-### 2. Dashboard / Portfolio — `home` tab (`screens.jsx` → `Dashboard`)
-Scrolling view. Top: date eyebrow, serif greeting "Good morning, {name}", italic subtitle. Then:
-- **Cosmos visualization** card ("YOUR COSMOS", "drag to rotate") — orbiting identity nodes; `filled = your time`, `ring = intention`.
-- **This week's balance** card — an alignment ring (e.g. "54% aligned") + a sentence naming the leading and lagging identity, with a "Tend to {lagging}" pill.
-- **Desired vs. actual** list ("past 7 days") — one **IdentityRow** per identity: colored glyph disc, name, `actual / desired %`, and a dual bar (actual fill over the intention track).
-- **Drift row (aggregate + expandable)** — directly after the identities, separated by a top border:
-  - Collapsed: ∞ glyph disc (drift color), "Drift" + a small amber "DRIFT" tag, `round(actual) / 0%` on the right with a chevron, the dual bar, and a sub-line "Tracking N apps · {total mins} this week" (or "No apps tracked").
-  - Tapping toggles expansion (chevron rotates: 90° collapsed → −90° expanded).
-  - Expanded (indented under the row): one line per **tracked** app — small drift-colored glyph, app name, weekly minutes, a thin bar (`pct` relative to the max tracked app), and a "**Stop**" pill to untrack it. Below, an "**Also track**" section listing **untracked** apps as "+ {name}" chips to add them.
-  - Toggling any app **live-recomputes** Drift's `actual` (= `driftSum`) and the "Tracking N apps · … this week" summary.
-- **Coach note** (compact) and **Recent sessions** list (last 4: glyph, label, when, minutes).
-
-### 3. Insights — `insights` tab (`screens.jsx` → `Insights`)
-Eyebrow "Rebalancing", headline "Insights", intro copy. A list of **insight cards**, each with a colored icon disc, a bold title, body copy, and an optional action **pill**. Insight kinds map to a color+icon: `neglect`→painter/clock, `nudge`→writer/arrow, `trade`→drift/bell, `balance`→engineer/flame. One insight ("3 hours on Instagram this week…") is a **Drift trade** — it references aggregated drift time. Ends with a full Coach note.
-
-### 4. Reflect — `reflect` tab (`screens2.jsx` → `Reflect`)
-Weekly reflection. Hero card: an **AlignmentRing** + delta vs. last week (green/amber) + a sentence. **Portfolio balance** card: two **StackedBar**s — "Intended" (identities by `desired`) and "Lived" (identities **plus Drift** by `actual`); Drift appears as a neutral segment here, so its tracked-app total is represented in the lived balance. **Identity trends** grid: per-identity sparkline + up/down/flat arrow. **In a sentence** summary card with "win" pills. **Where to lean next week**: focus identity cards with "{n}pts below intention".
-
-### 5. You / Identities — `identities` tab (`screens2.jsx` → `Identities`)
-Eyebrow "Your identities", headline "The person you're becoming". A **balance meter** card (sum of `desired` %, "Balanced / Over-committed / Room to give"). A card with a **slider row per identity** (0–50, step 5) to re-set intentions. An **Appearance** section with a Theme segmented control (Light "Celestial dawn" / Dark "Deep space"). "Add an identity" (uses `assignColor`) and "Replay the intro" (clears `started`) buttons.
-
-### Global chrome (`components.jsx`)
-- **StatusBar** — faux iOS status bar (9:41, dots, battery).
-- **TabBar** — 4 tabs (Portfolio / Insights / Reflect / You) with a center floating **"+"** button that opens the log sheet.
-- **LogSheet** (`logsheet.jsx`) — bottom sheet to log a session (pick identity + minutes). On commit: bumps that identity's `actual`, **reduces Drift proportionally** (tracked apps scale down by the same ratio), prepends a session, and shows a confirmation **toast**.
-- **Starfield** — decorative animated star dots.
-- **Segmented**, **Icon** (inline SVG set: insights, reflect, plus, sun, moon, chevron, check, clock, flame, arrow, bell, sparkle, …).
+An optional **auth-entry** flow ([`AuthFlow`](src/onboarding/AuthFlow.js)) offers cloud backup sign-in; it can be skipped and won't reappear once seen.
 
 ---
 
-## Interactions & Behavior
-- **Onboarding cadence ↔ allocation link:** the chosen cadence and free-hours value flow into Step 3, where each persona's percentage is rendered as real hours (`freeHours × pct / 100`) with the cadence suffix. Changing cadence resets free hours to that cadence's default.
-- **Free Time glate:** the app-tracking panel and the explanatory caption only appear while "Free Time" is selected. Deselecting Free Time hides them (and conceptually returns those hours to the identities).
-- **Drift aggregation (must hold everywhere):** Drift's `actual` is *always* `sum of pct over tracked apps`. Tracking/untracking an app updates the number, the "N apps · mins" summary, the dual bar, the Reflect "Lived" stacked bar, and any insight that references drift. There is no independent Drift value to keep in sync — derive it.
-- **Logging a session:** `commitLog(identity, mins)` → `actual += max(1, round(mins/12))` (capped at 60), `streak += 1`, `lastActiveDays = 0`; Drift `actual` drops by `round(bump/2)` and each tracked app's `pct`/`mins` scale by the new/old ratio; a session is prepended; a toast shows for ~2.6s.
-- **Expansion chevron:** rotate 90° (collapsed) ↔ −90° (expanded), 0.25s transition.
-- **Theme:** toggled from the You tab; persisted; dark is the hero default.
-- **Animations:** chip/card fade-ups (`.fade-up`), insight cards stagger by `index × 90ms`, viz nodes stagger by `index × 120ms`, toast slide/scale in. Keep these subtle; respect reduced-motion in the real build.
+## Screens
 
-## State Management
-Recreate with the target stack's idioms (e.g. a store/context). Needed state: identities (with desired/actual/streak/lastActive), the drift object **including its apps array with per-app `tracked`/`pct`/`mins`**, logged sessions, active tab, theme, onboarding-complete flag, and transient log-sheet/toast state. Persist theme and onboarding-complete. Derive Drift `actual` from the apps array rather than storing it twice.
+### 1. Portfolio — `home` tab ([`src/screens/Dashboard.js`](src/screens/Dashboard.js))
+Date eyebrow, serif greeting, italic prompt. Then:
+- **Cosmos / Constellation** hero — orbiting (or wired) identity nodes; `fill = your time`, `ring = intention`. Tapping a node opens the log sheet.
+- **Week-plan banner** — prompts you to set this week's plan if you haven't.
+- **This week's balance** — a gentle sentence naming the leading and lagging identity, with a "Tend to {lagging}" pill and a soft "vs last week" note. On a fresh week with nothing logged yet, it shows an inviting empty-state instead of a "leaning" claim.
+- **Coach note** + **Recent sessions** (derived from real session timestamps, with live "Today / Yesterday / Jun 8" labels).
+
+### 2. Insights — `insights` tab ([`src/screens/Insights.js`](src/screens/Insights.js))
+Rebalancing observations generated from the live identities ([`buildInsights`](src/lib/coach.js)) — a neglected/never-begun identity, one furthest below its intention, one carrying the week — each as a card colored by its own identity, with an optional action pill. Empty-state when there's nothing honest to say yet. Ends with a full Coach note.
+
+### 3. Reflect — `reflect` tab ([`src/screens/Reflect.js`](src/screens/Reflect.js))
+Weekly reflection, all from real history. Hero: an **AlignmentRing** for the most recent completed week + delta vs. the week before. **Past weeks, plan vs. lived** ([`PastWeeks`](src/weekly/PastWeeks.js)) — expandable per-week breakdowns scored against the plan in force that week; empty until weeks accrue. **Monthly activity tracker**. **Portfolio balance** — Intended vs. Lived stacked bars. **In a sentence** recap with "win" pills. **Where to lean next week** — the identities furthest below intention.
+
+### 4. You / Identities — `identities` tab ([`src/screens/Identities.js`](src/screens/Identities.js))
+- **This week's plan** — opens the weekly plan sheet.
+- A slider row per identity (0–50, step 5) to adjust intentions, plus **Add an identity** (uses `assignHue`).
+- **Appearance** — Theme toggle (Light "Celestial dawn" / Dark "Deep space").
+- **Nightly reminder** — a daily local notification (toggle + time presets) that, when tapped, opens the end-of-day review.
+- **Cloud backup** — passwordless email-code sign-in (opt-in, local-first); sign out.
+- **Replay the intro** — clears `started` to re-run onboarding.
+
+### 5. Identity Detail ([`src/screens/IdentityDetail.js`](src/screens/IdentityDetail.js))
+Opened from a focused cosmos node: a hero glyph, **This week** (planned vs. lived), a **This month** dot strip, **Across the weeks** (real per-week plan-vs-lived history, empty-state until one accrues), **Recent moments**, and a Retire action.
+
+### Global chrome ([`src/components/`](src/components/))
+- **TabBar** — Portfolio / Insights / Reflect / You, with a center floating **"+"** that opens the log sheet.
+- **LogSheet** — pick an identity (or Relaxation) + minutes; on commit it records a timestamped session (everything else re-derives) and shows a toast. Crossing an intention fires a single-identity celebration; completing the whole week fires the all-met triumph (once per week).
+- **WeekPlanSheet** ([`src/weekly/WeekPlanSheet.js`](src/weekly/WeekPlanSheet.js)) — allocate this week's % per identity (with last week's lived value shown as reference), pause an identity for the week ("resting"), and adjust free hours. Committing snapshots the plan into `planHistory` and re-arms the all-met celebration.
+- **BackupSheet**, **Starfield**, **Icon** (inline SVG set), **Toast**, celebration overlays.
+
+---
+
+## Weekly rhythm & key behaviors
+- **Rolling week.** `weekStartMs` / `inWeek` define a real calendar window (weeks start Sunday). "This week's" numbers and the whole-week celebration stop seeing last week's sessions once the boundary is crossed — no reset bookkeeping.
+- **Logging derives everything.** `commitLog(identity, mins, note)` just prepends a timestamped session. `actual`, `streak`, and `lastActiveDays` re-derive on the next render, so a new week starts fresh automatically. (≈12 min = 1 point; identities cap at 60, Relaxation at its allowance.)
+- **Plans persist forward.** A committed plan applies until you re-plan; `planHistory` captures each commit so historical weeks keep their real intention.
+- **End-of-day review** — tapping the nightly reminder opens a review that applies several logs at once (deduped per delivery so a stale launch doesn't reopen it).
+- **Cloud sync** ([`src/lib/sync.js`](src/lib/sync.js), [`auth.js`](src/lib/auth.js), [`supabase.js`](src/lib/supabase.js)) — the whole domain snapshot is one JSON row, last-write-wins by an `updatedAt` ms stamp. Local stays the source of truth; it's a no-op when Supabase isn't configured.
+- **Animations & motion** — subtle fade-ups and staggered viz nodes; respect reduced-motion.
+
+---
 
 ## Design Tokens
-Defined as CSS custom properties in `styles.css` for both themes (light "Celestial dawn" default `:root`, dark "Deep space" under `[data-theme="dark"]`). Dark is the hero.
+Two themes (light "Celestial dawn" default, dark "Deep space" — the hero), defined as resolved color objects in [`src/theme/theme.js`](src/theme/theme.js) (OKLCH converted to rgb/rgba via [`src/lib/color.js`](src/lib/color.js)).
 
 **Light / Dark core**
 - bg `#ecebf6` / `#0a0a15`; bg-2 `#e3e2f1` / `#060610`
@@ -174,23 +154,21 @@ Defined as CSS custom properties in `styles.css` for both themes (light "Celesti
 - engineer `oklch(0.60 0.085 168)` / `oklch(0.76 0.10 168)`
 - musician `oklch(0.585 0.105 322)` / `oklch(0.74 0.115 326)`
 - painter `oklch(0.70 0.105 70)` / `oklch(0.82 0.11 80)`
-- **drift (Free Time / time-sink, neutral)** `oklch(0.62 0.014 280)` / `oklch(0.66 0.018 280)`
-- Each has a `-soft` variant (same hue, alpha ~0.13 light / 0.18 dark) used for tints/backgrounds; identity objects also carry a `deep` hex.
+- **relax** (rest allowance, calm teal) `oklch(0.64 0.075 210)` / `oklch(0.76 0.085 210)`
+- Each has a `-soft` variant (same hue, alpha ~0.13 light / 0.18 dark) for tints; objects also carry a `deep` hex.
 - **good** (green) `oklch(0.60 0.085 168)` / `oklch(0.76 0.10 168)`; **warn** (amber) `oklch(0.66 0.13 50)` / `oklch(0.80 0.13 64)`.
 
-**Radii:** `--r-sm 12px`, `--r-md 18px`, `--r-lg 26px`, `--r-xl 34px`.
-
-**Shadows:** three tiers `--shadow-sm / -md / -lg` per theme (see `styles.css`).
+**Radii:** `sm 12`, `md 18`, `lg 26`, `xl 34`. **Shadows:** three tiers (`sm/md/lg`) per theme (iOS shadow props; Android elevation).
 
 **Typography**
-- Serif (headlines, numeric readouts): **Newsreader** (weights 300–600, italics used). Used at: onboarding hero 44px/500, step headlines 32–33px/500, large duration/percent readouts 20–34px/500.
-- Sans (UI, body): **Hanken Grotesk** (400/500/600/700). Body 14.5–18px; labels/captions 12–14px; eyebrows ~12px uppercase with letter-spacing; weights 600–700 for emphasis.
-- Both loaded from Google Fonts in `styles.css`.
+- Serif (headlines, numeric readouts): **Newsreader** (300–600, italics used).
+- Sans (UI, body): **Hanken Grotesk** (400/500/600/700). Body 14.5–18px; labels/captions 12–14px; eyebrows ~12px uppercase, tracked.
+- Loaded via `@expo-google-fonts/*`.
 
-**Spacing:** screen padding ~36px (dashboard/insights/you) / 44px (onboarding); card padding 18–30px; common gaps 9–14px (chips/rows) and 18–26px (sections).
+**Spacing:** screen padding ~36px (most screens) / 44px (onboarding); card padding 18–30px; common gaps 9–14px (chips/rows) and 18–26px (sections).
 
 ## Assets
-No raster images. All iconography is **inline SVG** in `components.jsx` (`Icon` component, 1.8–2.6 stroke). The cosmos and constellation visuals are **drawn with SVG/canvas** in `viz.jsx` / `viz3d.jsx`. Persona "glyphs" are just single letters in colored discs. Fonts come from Google Fonts. There are no brand assets to license.
+No raster images. All iconography is **inline SVG** ([`src/components/Icon.js`](src/components/Icon.js)). The cosmos and constellation visuals are drawn with `react-native-svg` ([`src/viz/`](src/viz/)). Persona "glyphs" are single letters in colored discs. Fonts come from Google Fonts via Expo.
 
 ## Implementation map
-The live app's file structure is documented in [`RUNNING.md`](RUNNING.md) (Architecture table). In brief: `App.js` (root + routing), `src/store/Store.js` (state + persistence), `src/data/data.js` (data model + helpers — **read this first**), `src/theme/` (tokens, fonts), `src/screens/` (Dashboard, Insights, Reflect, Identities, IdentityDetail, EndOfDayReview), `src/viz/` (cosmos visualizations), `src/components/` and `src/onboarding/` (shared UI + the 5-step flow), `src/lib/` (color, storage, notifications, layout).
+See [`RUNNING.md`](RUNNING.md) for prerequisites, run commands, and the full architecture/file-map table.
