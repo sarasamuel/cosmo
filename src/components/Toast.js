@@ -32,8 +32,8 @@ export default function Toast({ toast, bottom = 130 }) {
     ? `Today saved · ${toast.mins}m across ${toast.count} ${toast.count === 1 ? 'identity' : 'identities'}`
     : isRetire
     ? `${toast.name} retired · kept in your history`
-    : toast.spill > 0
-    ? `${toast.mins}m logged · over your allowance → Drift`
+    : toast.full
+    ? `${toast.mins}m of rest · allowance full`
     : `${toast.mins}m of ${toast.name} logged`;
 
   return (

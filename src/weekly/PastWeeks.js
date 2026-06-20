@@ -22,6 +22,7 @@ function Breakdown({ w, find, colorsFor, t, hideHead }) {
       <View style={{ gap: 14 }}>
         {w.rows.map((r) => {
           const idn = find(r.id);
+          if (!idn) return null; // identity retired — skip its historical row
           const c = colorsFor(idn);
           const hit = Math.min(1, r.actual / (r.plan || 1));
           return (
@@ -88,11 +89,22 @@ function WeekCard({ w, delta, isOpen, onToggle, find, colorsFor }) {
 
 export default function PastWeeks({ weeks, year }) {
   const { t, colorsFor } = useTheme();
-  const { identities, drift } = useStore();
+  const { identities, retired } = useStore();
+
+  if (!weeks || weeks.length === 0) {
+    return (
+      <Card style={{ paddingVertical: 22, paddingHorizontal: 22 }}>
+        <Text style={{ fontSize: 14.5, fontFamily: sans(500), color: t.inkFaint, textAlign: 'center', lineHeight: 22 }}>
+          No completed weeks yet — once you’ve lived a full week, it’ll appear here with your plan against what you actually lived.
+        </Text>
+      </Card>
+    );
+  }
+
   const RECENT = 1;
   const recent = weeks.slice(0, RECENT);
   const older = weeks.slice(RECENT);
-  const find = (id) => identities.find((i) => i.id === id) || drift;
+  const find = (id) => identities.find((i) => i.id === id) || retired.find((i) => i.id === id);
 
   const [open, setOpen] = useState(0);
   const [calOpen, setCalOpen] = useState(false);

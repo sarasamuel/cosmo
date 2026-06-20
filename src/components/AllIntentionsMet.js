@@ -431,7 +431,6 @@ export default function AllIntentionsMet({ open, form, identities, onClose, onSh
         <Pressable onPress={share} hitSlop={8} style={({ pressed }) => ({ marginTop: 16, opacity: pressed ? 0.6 : 1 })}>
           <Text style={{ fontFamily: sans(700), fontSize: 14, color: t.inkSoft }}>Share this week</Text>
         </Pressable>
-        <Text style={{ fontSize: 12, fontFamily: sans(600), color: t.inkFaint, marginTop: 16, letterSpacing: 0.4 }}>tap anywhere to continue</Text>
         <Pressable onPress={() => runIn(false)} hitSlop={8} style={({ pressed }) => ({ marginTop: 14, opacity: pressed ? 0.6 : 1 })}>
           <Text style={{ fontSize: 13, fontFamily: sans(600), color: t.inkFaint }}>↺ Replay</Text>
         </Pressable>

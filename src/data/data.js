@@ -14,19 +14,6 @@ export const IDENTITIES = [
   { id: 'painter', name: 'Painter', glyph: 'P', palette: 'painter', hue: 80, desired: 15, actual: 3, lastActiveDays: 8, streak: 0 },
 ];
 
-// ---- Drift: the unintended time sink, made of the apps a user opts to track ----
-export const DRIFT_APPS = [
-  { id: 'instagram', name: 'Instagram', glyph: 'I', pct: 13, mins: 184, tracked: true },
-  { id: 'tiktok', name: 'TikTok', glyph: 'T', pct: 10, mins: 142, tracked: true },
-  { id: 'games', name: 'Mobile games', glyph: 'G', pct: 9, mins: 121, tracked: true },
-  { id: 'youtube', name: 'YouTube', glyph: 'Y', pct: 7, mins: 96, tracked: false },
-  { id: 'x', name: 'X', glyph: 'X', pct: 5, mins: 64, tracked: false },
-  { id: 'reddit', name: 'Reddit', glyph: 'R', pct: 4, mins: 58, tracked: false },
-  { id: 'facebook', name: 'Facebook', glyph: 'F', pct: 3, mins: 41, tracked: false },
-];
-
-export const driftSum = (apps) => apps.filter((a) => a.tracked).reduce((s, a) => s + a.pct, 0);
-
 export function fmtMins(m) {
   const h = Math.floor(m / 60);
   const mm = Math.round(m % 60);
@@ -35,27 +22,29 @@ export function fmtMins(m) {
   return h + 'h ' + mm + 'm';
 }
 
-// `actual` is NOT stored here — it is always derived as driftSum(apps) + spill
-// (see driftActual). `spill` is the only non-app contribution: rest logged beyond
-// the Relaxation allowance overflows into Drift.
-export const DRIFT = {
-  id: 'drift',
-  name: 'Drift',
-  glyph: '∞',
-  palette: 'drift',
-  hue: 280,
-  desired: 0,
-  spill: 0,
-  apps: DRIFT_APPS,
-};
+export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-// The single source of truth for Drift's lived %: tracked apps + relax overflow.
-export const driftActual = (drift) => Math.min(100, driftSum(drift.apps) + (drift.spill || 0));
+const DAY_MS = 86400000;
+const sameYMD = (a, b) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
-// Relaxation — an *intended* allowance of rest. Unlike Drift, the user plans for
-// it: `desired` is the share of the week set aside to relax guilt-free. Time
-// logged within that allowance fills Relaxation; anything beyond it spills into
-// Drift. `tracked` mirrors whether "Relaxation Time" was kept in onboarding.
+// Human "when" for a session, derived live from its epoch-ms `ts` so the label
+// stays honest across reloads (a session logged Monday reads "Yesterday" on
+// Tuesday, "Jun 8" later) instead of freezing at "Just now".
+export function fmtWhen(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  if (sameYMD(d, now)) return 'Today';
+  const yest = new Date(now.getTime() - DAY_MS);
+  if (sameYMD(d, yest)) return 'Yesterday';
+  return `${MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
+}
+
+// Relaxation — an *intended* allowance of rest: `desired` is the share of the
+// week set aside to relax guilt-free. Time logged within that allowance fills
+// Relaxation; beyond it the allowance simply caps (rest is never a failure).
+// `tracked` is false when the allowance is 0 (rest not reserved).
 export const RELAX = {
   id: 'relax',
   name: 'Relaxation',
@@ -83,123 +72,252 @@ export const FREE_HOURS_WEEK = { min: 5, max: 90, step: 1, def: 35 };
 
 // catalog for onboarding
 export const CATALOG = [
-  'Writer', 'Reader', 'Engineer', 'Musician', 'Painter',
+  'Writer', 'Reader', 'Engineer', 'Journaler', 'Musician', 'Painter',
   'Athlete', 'Chef', 'Photographer', 'Gardener', 'Linguist',
   'Designer', 'Filmmaker', 'Dancer', 'Naturalist', 'Poet',
-  'Relaxation Time',
 ];
 
-// recent logged sessions (most recent first)
-export const SESSIONS = [
-  { id: 'engineer', label: 'Coding', mins: 90, when: 'Today · 9:10 AM' },
-  { id: 'reader', label: 'Reading', mins: 25, when: 'Today · 7:40 AM' },
-  { id: 'musician', label: 'Piano practice', mins: 30, when: 'Yesterday · 8:15 PM' },
-  { id: 'engineer', label: 'Coding', mins: 75, when: 'Yesterday · 2:00 PM' },
-  { id: 'writer', label: 'Morning pages', mins: 20, when: 'Yesterday · 6:55 AM' },
-  { id: 'painter', label: 'Watercolor', mins: 60, when: 'May 30 · 4:30 PM' },
-];
+// Seed activity — days-ago offsets per identity, so a fresh install opens with a
+// believable, populated month rather than an empty tracker. Each offset becomes
+// one session carrying a real `ts`; the Activity Tracker, IdentityDetail's month
+// strip, and the "when" labels are all derived from these timestamps.
+const SEED_ACTIVITY = {
+  engineer: [0, 0, 1, 2, 3, 5, 6, 8, 9, 11, 13, 15, 17, 20, 23],
+  writer: [0, 1, 3, 4, 7, 10, 14, 18, 22],
+  reader: [0, 2, 5, 8, 12, 16, 21, 25],
+  musician: [1, 6, 11, 16, 24],
+  painter: [4, 13, 26],
+};
+const SEED_LABELS = { engineer: 'Coding', writer: 'Morning pages', reader: 'Reading', musician: 'Piano practice', painter: 'Watercolor' };
+const SEED_MINS = { engineer: 75, writer: 25, reader: 30, musician: 30, painter: 60 };
+
+// recent logged sessions (most recent first), built from SEED_ACTIVITY
+export const SESSIONS = (() => {
+  const now = Date.now();
+  const out = [];
+  Object.keys(SEED_ACTIVITY).forEach((id) => {
+    SEED_ACTIVITY[id].forEach((daysAgo, k) => {
+      // stagger same-day repeats a few hours apart so ordering is stable
+      const ts = now - daysAgo * DAY_MS - k * 3 * 3600000;
+      out.push({ id, label: SEED_LABELS[id], mins: SEED_MINS[id], ts, when: fmtWhen(ts) });
+    });
+  });
+  return out.sort((a, b) => b.ts - a.ts);
+})();
 
 export const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-// rebalancing insights
-export const INSIGHTS = [
-  { kind: 'neglect', id: 'painter', title: 'Painter has been quiet for 8 days', body: 'Your longest gap this month. A short session would reawaken it.', action: 'Log 30m painting' },
-  { kind: 'nudge', id: 'writer', title: 'A 30-minute writing session today', body: 'would bring Writer back within reach of your 25% intention.', action: 'Start writing' },
-  { kind: 'trade', id: 'drift', title: '3 hours on Instagram this week', body: 'is roughly equal to 4 writing sessions, or 6 piano practices.', action: 'Set a gentle limit' },
-  { kind: 'balance', id: 'engineer', title: 'Engineer is carrying the week', body: 'It is 8 points above your intention. Nothing wrong — just worth noticing.', action: null },
-];
-
-export const COACH = {
-  date: 'Thursday, June 4',
-  note: 'This week your hours leaned toward Engineer more than Writer. That isn’t failure — deadlines pull. But your happiest logged days this month each held both reading and music. A small evening for either might be worth more than it costs.',
-  signoff: 'Cosmo',
-};
-
-export const REFLECTION = {
-  week: 'May 29 – Jun 4',
-  summary: 'A productive, head-down week. Engineering momentum was real, but three of your five identities went mostly untended. The good news: your mornings are working — every writing and reading session this week happened before noon.',
-  wins: ['9-day Engineer streak', 'Every reading session before noon', 'Returned to morning pages twice'],
-  focus: ['painter', 'musician'],
-  aligned: 53,
-  alignedLast: 47,
-};
-
 // ---- Weekly cadence: plan is now set per-week, not once forever ----
-// The current week the user is living in. `weekPlanned` (in the store) flips
-// true once this week's allocations are committed (persisted to AsyncStorage).
-export const THIS_WEEK = { label: 'Jun 5 – Jun 11', short: 'This week', daysIn: 1, daysTotal: 7 };
+// ---- Rolling week model -------------------------------------------------
+// The week is a real calendar window derived from `new Date()`, so it "resets"
+// on its own every WEEK_STARTS_ON without any reset bookkeeping: anything that
+// reads the current week (this week's `actual`, the whole-week celebration)
+// simply stops seeing last week's sessions once the date crosses the boundary.
+// 0 = Sunday (US convention), 1 = Monday.
+export const WEEK_STARTS_ON = 0;
 
-// Completed weeks, newest first. Each row carries the % PLANNED for that persona
-// that week and the % actually LIVED. `aligned` is the week's overall score.
-export const WEEKS = [
-  { label: 'May 29 – Jun 4', aligned: 53, rows: [
-    { id: 'writer', plan: 25, actual: 14 }, { id: 'reader', plan: 20, actual: 13 },
-    { id: 'engineer', plan: 20, actual: 31 }, { id: 'musician', plan: 20, actual: 9 },
-    { id: 'painter', plan: 15, actual: 4 }] },
-  { label: 'May 22 – May 28', aligned: 47, rows: [
-    { id: 'writer', plan: 20, actual: 10 }, { id: 'reader', plan: 15, actual: 9 },
-    { id: 'engineer', plan: 25, actual: 38 }, { id: 'musician', plan: 25, actual: 12 },
-    { id: 'painter', plan: 15, actual: 6 }] },
-  { label: 'May 15 – May 21', aligned: 49, rows: [
-    { id: 'writer', plan: 30, actual: 22 }, { id: 'reader', plan: 20, actual: 14 },
-    { id: 'engineer', plan: 20, actual: 30 }, { id: 'musician', plan: 15, actual: 7 },
-    { id: 'painter', plan: 15, actual: 9 }] },
-  { label: 'May 8 – May 14', aligned: 41, rows: [
-    { id: 'writer', plan: 25, actual: 11 }, { id: 'reader', plan: 25, actual: 12 },
-    { id: 'engineer', plan: 20, actual: 41 }, { id: 'musician', plan: 15, actual: 5 },
-    { id: 'painter', plan: 15, actual: 3 }] },
-  { label: 'May 1 – May 7', aligned: 44, rows: [
-    { id: 'writer', plan: 20, actual: 13 }, { id: 'reader', plan: 20, actual: 18 },
-    { id: 'engineer', plan: 30, actual: 39 }, { id: 'musician', plan: 15, actual: 8 },
-    { id: 'painter', plan: 15, actual: 5 }] },
-  { label: 'Apr 24 – Apr 30', aligned: 38, rows: [
-    { id: 'writer', plan: 25, actual: 9 }, { id: 'reader', plan: 20, actual: 11 },
-    { id: 'engineer', plan: 25, actual: 44 }, { id: 'musician', plan: 15, actual: 6 },
-    { id: 'painter', plan: 15, actual: 4 }] },
-  { label: 'Apr 17 – Apr 23', aligned: 42, rows: [
-    { id: 'writer', plan: 20, actual: 12 }, { id: 'reader', plan: 25, actual: 16 },
-    { id: 'engineer', plan: 25, actual: 40 }, { id: 'musician', plan: 15, actual: 7 },
-    { id: 'painter', plan: 15, actual: 3 }] },
-  { label: 'Apr 10 – Apr 16', aligned: 35, rows: [
-    { id: 'writer', plan: 30, actual: 10 }, { id: 'reader', plan: 20, actual: 9 },
-    { id: 'engineer', plan: 20, actual: 47 }, { id: 'musician', plan: 15, actual: 4 },
-    { id: 'painter', plan: 15, actual: 2 }] },
-  { label: 'Apr 3 – Apr 9', aligned: 40, rows: [
-    { id: 'writer', plan: 25, actual: 14 }, { id: 'reader', plan: 20, actual: 13 },
-    { id: 'engineer', plan: 25, actual: 42 }, { id: 'musician', plan: 15, actual: 5 },
-    { id: 'painter', plan: 15, actual: 6 }] },
-  { label: 'Mar 27 – Apr 2', aligned: 33, rows: [
-    { id: 'writer', plan: 20, actual: 8 }, { id: 'reader', plan: 20, actual: 7 },
-    { id: 'engineer', plan: 30, actual: 51 }, { id: 'musician', plan: 15, actual: 3 },
-    { id: 'painter', plan: 15, actual: 2 }] },
-];
+const fmtDay = (d) => `${MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
 
-// ---- Activity Tracker: which personas got tended on each day this month ----
-export const MONTH = {
-  name: 'May',
-  year: 2026,
-  days: 31,
-  todayDay: 4,
-  done: {
-    engineer: [1, 2, 3, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31],
-    writer: [1, 2, 4, 5, 7, 8, 11, 12, 14, 15, 18, 20, 21, 24, 27, 28, 30],
-    reader: [1, 3, 5, 8, 10, 12, 14, 17, 19, 20, 23, 25, 27, 28, 31],
-    musician: [2, 6, 11, 13, 16, 20, 24, 27, 30],
-    painter: [3, 9, 14, 21, 29],
-  },
-};
-export function monthDone(id, day) {
-  const d = MONTH.done[id];
-  return d ? d.includes(day) : false;
+// epoch-ms of local midnight at the start of the week containing `refMs` (now).
+export function weekStartMs(refMs) {
+  const d = refMs ? new Date(refMs) : new Date();
+  d.setHours(0, 0, 0, 0);
+  const back = (d.getDay() - WEEK_STARTS_ON + 7) % 7;
+  d.setDate(d.getDate() - back);
+  return d.getTime();
 }
 
-// 100 - half the total absolute drift, including the drift bucket
-export function alignment(list, drift) {
+// is a session timestamp inside the week containing `refMs`? Uses calendar
+// arithmetic for the end bound so it stays correct across DST.
+export function inWeek(ts, refMs) {
+  if (!ts) return false;
+  const start = new Date(weekStartMs(refMs));
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+  return ts >= start.getTime() && ts < end.getTime();
+}
+
+// "Jun 15 – Jun 21" label for the week containing `refMs`.
+export function weekLabel(refMs) {
+  const start = new Date(weekStartMs(refMs));
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return `${fmtDay(start)} – ${fmtDay(end)}`;
+}
+
+// 1-based day index within the current week (1 = the WEEK_STARTS_ON day).
+export function weekDayIndex(refMs) {
+  const d = refMs ? new Date(refMs) : new Date();
+  return ((d.getDay() - WEEK_STARTS_ON + 7) % 7) + 1;
+}
+
+// ---- Activity derivations (a single source of truth: logged sessions) ----
+// A session's contribution in the same %-ish "points" unit as `desired`. Kept
+// identical to the prototype's bump so visuals/tuning are unchanged: ~12 min = 1.
+export const SESSION_POINTS = (mins) => Math.max(1, Math.round((mins || 0) / 12));
+
+// Points an identity has earned *this week* (uncapped — callers clamp: identities
+// at 60, Relaxation at its allowance). This is what makes `actual` a real weekly
+// window rather than an ever-accumulating counter.
+export function weekPoints(sessions, id, refMs) {
+  let sum = 0;
+  (sessions || []).forEach((s) => {
+    if (s && s.id === id && inWeek(s.ts, refMs)) sum += SESSION_POINTS(s.mins);
+  });
+  return sum;
+}
+
+// Whole days since this identity's most recent session (0 = today). `fallback`
+// (default 99) when it has never been logged — the new-identity sentinel.
+export function daysSinceLast(sessions, id, fallback = 99) {
+  let latest = 0;
+  (sessions || []).forEach((s) => {
+    if (s && s.id === id && s.ts && s.ts > latest) latest = s.ts;
+  });
+  if (!latest) return fallback;
+  const a = new Date(latest);
+  a.setHours(0, 0, 0, 0);
+  const b = new Date();
+  b.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((b.getTime() - a.getTime()) / DAY_MS));
+}
+
+// Consecutive calendar days (ending today, or yesterday if today isn't logged
+// yet) on which this identity got at least one session.
+export function dayStreak(sessions, id) {
+  const days = new Set();
+  (sessions || []).forEach((s) => {
+    if (s && s.id === id && s.ts) {
+      const d = new Date(s.ts);
+      d.setHours(0, 0, 0, 0);
+      days.add(d.getTime());
+    }
+  });
+  if (!days.size) return 0;
+  const cur = new Date();
+  cur.setHours(0, 0, 0, 0);
+  if (!days.has(cur.getTime())) {
+    cur.setDate(cur.getDate() - 1);
+    if (!days.has(cur.getTime())) return 0;
+  }
+  let n = 0;
+  while (days.has(cur.getTime())) {
+    n += 1;
+    cur.setDate(cur.getDate() - 1);
+  }
+  return n;
+}
+
+// The intention in force for `idn` during the week starting `ws`: the most
+// recently committed plan at or before that week (plans persist forward until
+// re-planned). `planHistory` is { weekStartMs: { identityId: pct } }, recorded at
+// each commit. Falls back to the current `desired` only for weeks earlier than
+// any recorded plan (legacy data with no captured history).
+export function planForWeek(planHistory, ws, idn) {
+  let bestKey = -Infinity;
+  if (planHistory) {
+    Object.keys(planHistory).forEach((k) => {
+      const n = Number(k);
+      if (n <= ws && n > bestKey) bestKey = n;
+    });
+  }
+  if (bestKey > -Infinity) {
+    const entry = planHistory[bestKey];
+    return entry && entry[idn.id] != null ? entry[idn.id] : 0; // in the plan, or not yet planned that week
+  }
+  return idn.desired;
+}
+
+// Recent COMPLETED weeks (before this one) in which `identity` actually logged at
+// least one session — newest first, capped to `count`. Lived points come
+// straight from the sessions; `plan` is the intention that was in force that week
+// (from `planHistory`). Steps week-by-week and re-snaps each ref to its week
+// start, so it stays correct across DST. Returns [] for a fresh identity.
+export function recentWeeksFor(sessions, identity, planHistory, count = 4, lookback = 26) {
+  const out = [];
+  let ref = weekStartMs() - DAY_MS; // a moment inside last week
+  for (let i = 0; i < lookback && out.length < count; i += 1) {
+    const ws = weekStartMs(ref);
+    const lived = weekPoints(sessions, identity.id, ws);
+    if (lived > 0) out.push({ label: weekLabel(ws).split(' – ')[0], plan: planForWeek(planHistory, ws, identity), actual: lived });
+    ref = ws - DAY_MS; // jump into the previous week
+  }
+  return out;
+}
+
+// epoch-ms of the start of the week immediately before the one containing now.
+export function lastWeekStartMs() {
+  return weekStartMs(weekStartMs() - 1); // 1ms before this week's start lands in last week
+}
+
+// Real weekly history, newest first — one entry per COMPLETED week (before this
+// one) in which *any* active identity logged a session. Each entry matches the
+// shape the weekly UI expects: { label, aligned, rows: [{ id, plan, actual }] }.
+// `actual` is the lived points that week (from real sessions); `plan` is the
+// intention that was in force that week (from `planHistory`). Empty weeks are
+// skipped, so a fresh user gets [] and the UI falls back to its honest
+// empty-states rather than fabricated history.
+export function pastWeeks(sessions, identities, planHistory, count = 8, lookback = 30) {
+  const list = identities || [];
+  if (!list.length) return [];
+  const out = [];
+  let ref = weekStartMs() - DAY_MS; // a moment inside last week
+  for (let i = 0; i < lookback && out.length < count; i += 1) {
+    const ws = weekStartMs(ref);
+    const rows = list.map((idn) => ({
+      id: idn.id,
+      plan: planForWeek(planHistory, ws, idn),
+      actual: Math.min(60, weekPoints(sessions, idn.id, ws)),
+    }));
+    if (rows.some((r) => r.actual > 0)) {
+      out.push({ label: weekLabel(ws), aligned: alignment(rows.map((r) => ({ desired: r.plan, actual: r.actual }))), rows });
+    }
+    ref = ws - DAY_MS; // jump into the previous week
+  }
+  return out;
+}
+
+// ---- Activity Tracker: which personas got tended on each day this month ----
+// Derived live from logged sessions' real `ts`. Returns the month containing
+// `refMs` (defaults to now): its name/year/length, today's day-of-month (0 when
+// `refMs` isn't the current month), the set of weekend day-numbers, and a
+// `done` map of identity-id → sorted array of day-numbers that hold a session.
+export function monthActivity(sessions, refMs) {
+  const ref = refMs ? new Date(refMs) : new Date();
+  const year = ref.getFullYear();
+  const mon = ref.getMonth();
+  const days = new Date(year, mon + 1, 0).getDate();
+
+  const now = new Date();
+  const todayDay = now.getFullYear() === year && now.getMonth() === mon ? now.getDate() : 0;
+
+  const weekend = new Set();
+  for (let d = 1; d <= days; d += 1) {
+    const wd = new Date(year, mon, d).getDay();
+    if (wd === 0 || wd === 6) weekend.add(d);
+  }
+
+  const sets = {};
+  (sessions || []).forEach((s) => {
+    if (!s || !s.ts) return;
+    const sd = new Date(s.ts);
+    if (sd.getFullYear() !== year || sd.getMonth() !== mon) return;
+    (sets[s.id] || (sets[s.id] = new Set())).add(sd.getDate());
+  });
+  const done = {};
+  Object.keys(sets).forEach((id) => {
+    done[id] = [...sets[id]].sort((a, b) => a - b);
+  });
+
+  return { name: MONTH_NAMES[mon], year, days, todayDay, weekend, done };
+}
+
+// 100 - half the total absolute gap between intended and lived, across identities
+export function alignment(list) {
   let diff = 0;
   list.forEach((i) => {
     diff += Math.abs(i.desired - i.actual);
   });
-  diff += drift.actual; // drift desired is 0
   return Math.max(0, Math.round(100 - diff / 2));
 }
 

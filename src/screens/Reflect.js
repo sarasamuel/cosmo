@@ -1,15 +1,16 @@
 /* Reflect tab — weekly reflection, reworked per CHANGES.md to surface weekly
    alignment: last-week hero, alignment-over-time trend, plan-vs-lived per week,
    and a monthly activity tracker. Ported from Reflect in screens2.jsx. */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ScrollView, View, Text } from 'react-native';
 import { useStore, useTheme } from '../store/Store';
-import { REFLECTION, WEEKS, MONTH } from '../data/data';
+import { pastWeeks } from '../data/data';
 import { Card, Glyph, Eyebrow, SectionTitle, Pill } from '../components/primitives';
 import Icon from '../components/Icon';
 import AlignmentRing from '../components/AlignmentRing';
 import PastWeeks from '../weekly/PastWeeks';
 import ActivityTracker from '../weekly/ActivityTracker';
+import { weekSummary, lastWeekTrend, focusIdentities } from '../lib/coach';
 import { useScreenPad } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
@@ -39,10 +40,16 @@ function StackedBar({ items, field, label, colorsFor }) {
 
 export default function Reflect() {
   const { t, colorsFor } = useTheme();
-  const { identities, drift } = useStore();
-  const delta = REFLECTION.aligned - REFLECTION.alignedLast;
-  const lived = [...identities, drift];
+  const { identities, sessions, planHistory } = useStore();
+  const lived = identities;
   const pad = useScreenPad();
+  // real weekly history, derived from logged sessions + the plans they were lived
+  // against (empty until weeks accrue)
+  const weeks = useMemo(() => pastWeeks(sessions, identities, planHistory), [sessions, identities, planHistory]);
+  const recap = weekSummary(identities, weeks[0]?.rows);
+  const trend = lastWeekTrend(weeks);
+  const delta = trend.delta;
+  const focus = focusIdentities(identities);
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
@@ -54,17 +61,19 @@ export default function Reflect() {
 
       {/* hero — most recent completed week */}
       <Card style={{ marginTop: 20, padding: 28, flexDirection: 'row', gap: 24, alignItems: 'center' }}>
-        <AlignmentRing value={REFLECTION.aligned} size={140} />
+        <AlignmentRing value={trend.aligned} size={140} />
         <View style={{ flex: 1 }}>
-          <SectionTitle style={{ marginBottom: 4 }}>Last week · {REFLECTION.week}</SectionTitle>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Icon name="arrow" size={16} stroke={2} color={delta >= 0 ? t.good : t.warn} />
-            <Text style={{ fontSize: 15, fontFamily: sans(700), color: delta >= 0 ? t.good : t.warn }}>
-              {delta >= 0 ? '+' : ''}{delta} from the week before
-            </Text>
-          </View>
+          <SectionTitle style={{ marginBottom: 4 }}>Last week · {trend.week}</SectionTitle>
+          {delta !== 0 && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Icon name="arrow" size={16} stroke={2} color={delta >= 0 ? t.good : t.warn} />
+              <Text style={{ fontSize: 15, fontFamily: sans(700), color: delta >= 0 ? t.good : t.warn }}>
+                {delta >= 0 ? '+' : ''}{delta} from the week before
+              </Text>
+            </View>
+          )}
           <Text style={{ fontSize: 14.5, color: t.inkSoft, lineHeight: 22, marginTop: 12 }}>
-            Closer than last week, though still drifting. Your intention and your hours are slowly converging.
+            {trend.note}
           </Text>
         </View>
       </Card>
@@ -72,12 +81,12 @@ export default function Reflect() {
       {/* per-week breakdown — plan vs lived */}
       <View style={{ marginTop: 26 }}>
         <SectionTitle style={{ marginBottom: 14 }}>Last week, plan vs. lived</SectionTitle>
-        <PastWeeks weeks={WEEKS} year={MONTH.year} />
+        <PastWeeks weeks={weeks} year={new Date().getFullYear()} />
       </View>
 
       {/* monthly activity tracker */}
       <View style={{ marginTop: 26 }}>
-        <ActivityTracker month={MONTH} />
+        <ActivityTracker />
       </View>
 
       {/* portfolio balance */}
@@ -92,35 +101,43 @@ export default function Reflect() {
       {/* summary */}
       <Card style={{ marginTop: 26, padding: 30 }}>
         <SectionTitle style={{ marginBottom: 14 }}>In a sentence</SectionTitle>
-        <Text style={{ fontFamily: serif(400), fontSize: 22, lineHeight: 33, color: t.ink }}>{REFLECTION.summary}</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20 }}>
-          {REFLECTION.wins.map((w, k) => (
-            <Pill key={k} bg={t.surface3}>
-              <Icon name="check" size={14} stroke={2.4} color={t.ink} />
-              <Text style={{ fontSize: 13, fontFamily: sans(700), color: t.ink }}>{w}</Text>
-            </Pill>
-          ))}
-        </View>
+        <Text style={{ fontFamily: serif(400), fontSize: 22, lineHeight: 33, color: t.ink }}>{recap.summary}</Text>
+        {recap.wins.length > 0 && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20 }}>
+            {recap.wins.map((w, k) => (
+              <Pill key={k} bg={t.surface3}>
+                <Icon name="check" size={14} stroke={2.4} color={t.ink} />
+                <Text style={{ fontSize: 13, fontFamily: sans(700), color: t.ink }}>{w}</Text>
+              </Pill>
+            ))}
+          </View>
+        )}
       </Card>
 
-      {/* focus */}
+      {/* focus — the identities furthest below their intention */}
       <View style={{ marginTop: 26 }}>
         <SectionTitle style={{ marginBottom: 14 }}>Where to lean next week</SectionTitle>
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          {REFLECTION.focus.map((fid) => {
-            const i = identities.find((x) => x.id === fid);
-            if (!i) return null;
-            const c = colorsFor(i);
-            return (
-              <Card key={fid} style={{ flex: 1, padding: 22, alignItems: 'center', overflow: 'hidden' }}>
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.soft, opacity: 0.5 }} />
-                <Glyph char={i.glyph} size={46} fontSize={22} color={c.color} style={{ marginBottom: 12 }} />
-                <Text style={{ fontSize: 17, fontFamily: sans(700), color: t.ink }}>{i.name}</Text>
-                <Text style={{ fontSize: 13, color: t.inkSoft, fontFamily: sans(600), marginTop: 2 }}>{i.desired - i.actual}pts below intention</Text>
-              </Card>
-            );
-          })}
-        </View>
+        {focus.length > 0 ? (
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            {focus.map((i) => {
+              const c = colorsFor(i);
+              return (
+                <Card key={i.id} style={{ flex: 1, padding: 22, alignItems: 'center', overflow: 'hidden' }}>
+                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.soft, opacity: 0.5 }} />
+                  <Glyph char={i.glyph} size={46} fontSize={22} color={c.color} style={{ marginBottom: 12 }} />
+                  <Text style={{ fontSize: 17, fontFamily: sans(700), color: t.ink }}>{i.name}</Text>
+                  <Text style={{ fontSize: 13, color: t.inkSoft, fontFamily: sans(600), marginTop: 2 }}>{i.desired - i.actual}pts below intention</Text>
+                </Card>
+              );
+            })}
+          </View>
+        ) : (
+          <Card style={{ padding: 22 }}>
+            <Text style={{ alignSelf: 'stretch', width: '100%', fontSize: 15, color: t.inkSoft, fontFamily: sans(600), textAlign: 'center', lineHeight: 22 }}>
+              Every identity is at or above its intention — nothing to chase. Lovely.
+            </Text>
+          </Card>
+        )}
       </View>
     </ScrollView>
   );

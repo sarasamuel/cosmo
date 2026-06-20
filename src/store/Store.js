@@ -1,15 +1,17 @@
 /* App store — a single React context mirroring the prototype's App-level state.
-   Holds identities, the drift bucket (with per-app tracked/pct/mins), sessions,
-   active tab, theme, onboarding flag, and transient log-sheet/toast state.
-   Theme + onboarding-complete are persisted to AsyncStorage. Drift `actual` is
-   always derived from the apps array (never stored twice). */
+   Holds identities, the Relaxation allowance, sessions, active tab, theme,
+   onboarding flag, and transient log-sheet/toast state. Theme + onboarding-
+   complete + the mutable domain state are persisted to AsyncStorage. */
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as storage from '../lib/storage';
 import * as notifications from '../lib/notifications';
+import * as auth from '../lib/auth';
+import * as sync from '../lib/sync';
 import {
-  IDENTITIES, DRIFT, RELAX, SESSIONS, THIS_WEEK, FREE_HOURS_WEEK,
-  alignment as alignmentFn, driftSum, driftActual, assignHue,
+  IDENTITIES, RELAX, SESSIONS, FREE_HOURS_WEEK,
+  alignment as alignmentFn, assignHue, fmtWhen,
+  weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS,
 } from '../data/data';
 import { themes, identityColors } from '../theme/theme';
 
@@ -17,13 +19,16 @@ const StoreContext = createContext(null);
 
 const KEY_THEME = 'cosmo-theme';
 const KEY_STARTED = 'cosmo-started';
-const KEY_WEEK = 'cosmo-week-' + THIS_WEEK.label;
-const KEY_ALLMET = 'cosmo-allmet-' + THIS_WEEK.label; // fired-once flag for the whole-week celebration
+const KEY_WEEK = 'cosmo-week'; // weekPlanned flag (a plan has been committed)
+const KEY_ALLMET = 'cosmo-allmet'; // week-start (ms) the whole-week triumph last fired for (fire once per week)
 const KEY_FORM = 'cosmo-form';
-const KEY_DATA = 'cosmo-data'; // mutable domain state (identities/drift/relax/sessions)
+const KEY_DATA = 'cosmo-data'; // mutable domain state (identities/retired/relax/sessions)
 const KEY_REMINDER = 'cosmo-reminder'; // { enabled, hour, minute } for the daily local reminder
 const KEY_LASTNOTIF = 'cosmo-lastnotif'; // delivery stamp of the last reminder tap we opened the review for
 const KEY_FREEHOURS = 'cosmo-freehours'; // weekly free hours the user has to allocate (from onboarding / re-plan)
+const KEY_STAMP = 'cosmo-stamp'; // logical version (ms) of the synced state, for last-write-wins
+const KEY_NAME = 'cosmo-name'; // display name (captured at sign-in)
+const KEY_AUTHSEEN = 'cosmo-authseen'; // the auth-entry flow was completed or skipped (don't show it again)
 
 const DEFAULT_REMINDER = { enabled: false, hour: 9, minute: 0 };
 
@@ -36,9 +41,9 @@ export function StoreProvider({ children }) {
   const [tab, setTab] = useState('home');
   const [identities, setIdentities] = useState(IDENTITIES);
   const [retired, setRetired] = useState([]); // retired identities — kept for history, out of active lists/viz
-  const [drift, setDrift] = useState(DRIFT);
   const [relax, setRelax] = useState(RELAX);
   const [sessions, setSessions] = useState(SESSIONS);
+  const [planHistory, setPlanHistory] = useState({}); // { weekStartMs: { identityId: pct } } — committed plans, kept for real weekly history
 
   const [logOpen, setLogOpen] = useState(false);
   const [logPreset, setLogPreset] = useState(null);
@@ -51,16 +56,27 @@ export function StoreProvider({ children }) {
   const [review, setReview] = useState(false); // end-of-day review screen open (from the reminder tap)
   const [celebrate, setCelebrate] = useState(null); // identity that just reached its intention (celebration overlay)
   const [allMetOpen, setAllMetOpen] = useState(false); // whole-week "every intention met" celebration
-  const [allMetFired, setAllMetFired] = useState(false); // already celebrated this week (fire once)
+  const [allMetWeek, setAllMetWeek] = useState(0); // week-start (ms) the triumph last fired for (0 = never)
   const [reminder, setReminder] = useState(DEFAULT_REMINDER); // daily local notification prefs
+  const [session, setSession] = useState(null); // Supabase auth session (null = signed out / offline-only)
+  const [backupOpen, setBackupOpen] = useState(false); // cloud-backup (email-OTP) sheet
+  const [userName, setUserNameState] = useState(''); // display name (captured at sign-in)
+  const [authSeen, setAuthSeen] = useState(false); // auth-entry flow completed or skipped
   const [toast, setToast] = useState(null);
+
+  // ---- cloud sync (document backup) bookkeeping ----
+  const stampRef = useRef(0); // logical version (ms) of local synced state, for last-write-wins
+  const sessionRef = useRef(null); // latest session, read inside debounced timers without re-subscribing
+  const pendingRef = useRef(null); // latest snapshot awaiting a debounced push
+  const pushTimerRef = useRef(null);
+  const syncInitRef = useRef(false); // skip the first post-hydration settle so it isn't counted as a change
 
   // hydrate persisted prefs + the mutable domain state. storage.getItem logs and
   // returns null on a failed read (never rejects), so a read error degrades to
   // seed defaults *with a logged signal* rather than silently.
   useEffect(() => {
     (async () => {
-      const [t, s, w, f, d, rem, fh, am] = await Promise.all([
+      const [t, s, w, f, d, rem, fh, am, nm, as] = await Promise.all([
         storage.getItem(KEY_THEME),
         storage.getItem(KEY_STARTED),
         storage.getItem(KEY_WEEK),
@@ -69,9 +85,15 @@ export function StoreProvider({ children }) {
         storage.getItem(KEY_REMINDER),
         storage.getItem(KEY_FREEHOURS),
         storage.getItem(KEY_ALLMET),
+        storage.getItem(KEY_NAME),
+        storage.getItem(KEY_AUTHSEEN),
       ]);
       if (t === 'light' || t === 'dark') setThemeName(t);
-      if (am === '1') setAllMetFired(true);
+      { const n = Number(am); if (am != null && Number.isFinite(n)) setAllMetWeek(n); }
+      if (nm) setUserNameState(nm);
+      if (as === '1') setAuthSeen(true);
+      const stampNum = Number(await storage.getItem(KEY_STAMP));
+      if (Number.isFinite(stampNum)) stampRef.current = stampNum;
       const fhNum = Number(fh);
       if (fh != null && Number.isFinite(fhNum)) {
         setFreeHoursState(Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, fhNum)));
@@ -95,9 +117,9 @@ export function StoreProvider({ children }) {
           const data = JSON.parse(d);
           if (Array.isArray(data?.identities) && data.identities.length) setIdentities(data.identities);
           if (Array.isArray(data?.retired)) setRetired(data.retired);
-          if (data?.drift) setDrift(data.drift);
           if (data?.relax) setRelax(data.relax);
           if (Array.isArray(data?.sessions)) setSessions(data.sessions);
+          if (data?.planHistory && typeof data.planHistory === 'object') setPlanHistory(data.planHistory);
         } catch (e) {
           // corrupt blob: keep seed defaults, but don't swallow it silently
           // eslint-disable-next-line no-console
@@ -130,13 +152,111 @@ export function StoreProvider({ children }) {
     return unsub;
   }, []);
 
+  // Track the Supabase auth session (cloud backup). No-op when Supabase isn't
+  // configured — the app stays fully usable offline. Sync of the domain state is
+  // a later slice; this just exposes who's signed in.
+  useEffect(() => {
+    auth.getSession().then(setSession);
+    const unsub = auth.onAuthChange(setSession);
+    return unsub;
+  }, []);
+
+  const openBackup = useCallback(() => setBackupOpen(true), []);
+  const closeBackup = useCallback(() => setBackupOpen(false), []);
+  const signOut = useCallback(() => auth.signOut(), []);
+
+  const setUserName = useCallback((name) => {
+    const v = (name || '').trim();
+    setUserNameState(v);
+    storage.setItem(KEY_NAME, v);
+  }, []);
+  // mark the auth-entry flow as done (signed in or skipped) so it isn't shown again
+  const markAuthSeen = useCallback(() => {
+    setAuthSeen(true);
+    storage.setItem(KEY_AUTHSEEN, '1');
+  }, []);
+
   // persist the mutable domain state whenever it changes — gated on `hydrated`
   // so the initial seed values can't clobber stored data before the load above
   // completes. Written as one atomic blob (no partial/half-saved states).
   useEffect(() => {
     if (!hydrated) return;
-    storage.setItem(KEY_DATA, JSON.stringify({ identities, retired, drift, relax, sessions }));
-  }, [hydrated, identities, retired, drift, relax, sessions]);
+    storage.setItem(KEY_DATA, JSON.stringify({ identities, retired, relax, sessions, planHistory }));
+  }, [hydrated, identities, retired, relax, sessions, planHistory]);
+
+  // ===== Cloud sync (document backup) ====================================
+  // The whole domain snapshot is one JSON row in profiles.state, last-write-wins
+  // by `updatedAt` (a ms stamp inside the blob). Local stays the source of truth.
+  useEffect(() => { sessionRef.current = session; }, [session]);
+
+  // the snapshot we back up — everything that defines a user's state
+  const buildSnapshot = () => ({
+    v: 1,
+    updatedAt: stampRef.current,
+    identities, retired, relax, sessions, planHistory,
+    theme, form, freeHours, reminder, weekPlanned, started, allMetWeek, userName,
+  });
+
+  // apply a remote snapshot to local state + the offline cache (pref keys that
+  // have no auto-persisting setter are written here). The change-watch effect
+  // below will fire once and push it straight back — a harmless idempotent echo.
+  const applyRemote = (snap) => {
+    if (Array.isArray(snap.identities) && snap.identities.length) setIdentities(snap.identities);
+    if (Array.isArray(snap.retired)) setRetired(snap.retired);
+    if (snap.relax) setRelax(snap.relax);
+    if (Array.isArray(snap.sessions)) setSessions(snap.sessions);
+    if (snap.planHistory && typeof snap.planHistory === 'object') setPlanHistory(snap.planHistory);
+    if (snap.theme === 'light' || snap.theme === 'dark') { setThemeName(snap.theme); storage.setItem(KEY_THEME, snap.theme); }
+    if (snap.form === 'orbit' || snap.form === 'constellation') { setFormState(snap.form); storage.setItem(KEY_FORM, snap.form); }
+    if (typeof snap.freeHours === 'number') { setFreeHoursState(snap.freeHours); storage.setItem(KEY_FREEHOURS, String(snap.freeHours)); }
+    if (snap.reminder) { setReminder(snap.reminder); storage.setItem(KEY_REMINDER, JSON.stringify(snap.reminder)); }
+    if (typeof snap.weekPlanned === 'boolean') { setWeekPlanned(snap.weekPlanned); snap.weekPlanned ? storage.setItem(KEY_WEEK, '1') : storage.removeItem(KEY_WEEK); }
+    if (typeof snap.started === 'boolean') { setStarted(snap.started); snap.started ? storage.setItem(KEY_STARTED, '1') : storage.removeItem(KEY_STARTED); }
+    if (typeof snap.allMetWeek === 'number') { setAllMetWeek(snap.allMetWeek); storage.setItem(KEY_ALLMET, String(snap.allMetWeek)); }
+    if (typeof snap.userName === 'string') { setUserNameState(snap.userName); storage.setItem(KEY_NAME, snap.userName); }
+    stampRef.current = snap.updatedAt || Date.now();
+    storage.setItem(KEY_STAMP, String(stampRef.current));
+  };
+
+  const schedulePush = (delay = 900) => {
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    pushTimerRef.current = setTimeout(() => {
+      const uid = sessionRef.current && sessionRef.current.user && sessionRef.current.user.id;
+      if (uid && pendingRef.current) sync.pushState(uid, pendingRef.current);
+    }, delay);
+  };
+
+  // bump the version + queue a debounced push whenever any synced state changes.
+  // skip the first settle after hydration (it's the load, not a user edit).
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!syncInitRef.current) { syncInitRef.current = true; return; }
+    stampRef.current = Date.now();
+    storage.setItem(KEY_STAMP, String(stampRef.current));
+    pendingRef.current = buildSnapshot();
+    if (sessionRef.current && sessionRef.current.user) schedulePush();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, identities, retired, relax, sessions, planHistory, theme, form, freeHours, reminder, weekPlanned, started, allMetWeek, userName]);
+
+  // on sign-in (and on launch if already signed in): pull, then restore-or-back-up.
+  useEffect(() => {
+    const uid = session && session.user && session.user.id;
+    if (!hydrated || !uid) return;
+    let cancelled = false;
+    (async () => {
+      const remote = await sync.pullState(uid);
+      if (cancelled) return;
+      if (remote && (remote.updatedAt || 0) > stampRef.current) {
+        applyRemote(remote); // cloud is newer → restore
+      } else {
+        pendingRef.current = buildSnapshot(); // local is newer / no remote → back it up
+        sync.pushState(uid, pendingRef.current);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, session]);
+  // ======================================================================
 
   // Single transient toast with one shared timer: clear any pending dismissal
   // before showing a new one (so rapid toasts don't cut each other off), and
@@ -160,12 +280,35 @@ export function StoreProvider({ children }) {
     storage.setItem(KEY_FREEHOURS, String(clamped));
   }, []);
 
+  // The Relaxation allowance: its weekly share. 0 means rest isn't reserved, so
+  // it's not tracked. Persisted with the domain blob (relax is part of KEY_DATA).
+  const setRelaxAllowance = useCallback((pct) => {
+    setRelax((r) => ({ ...r, desired: Math.max(0, Math.round(pct)), tracked: pct > 0 }));
+  }, []);
+
   const setTheme = useCallback((t) => {
     setThemeName(t);
     storage.setItem(KEY_THEME, t);
   }, []);
 
   const setForm = useCallback((f) => { setFormState(f); storage.setItem(KEY_FORM, f); }, []);
+
+  // Finish onboarding with the user's real cosmos: their chosen identities (with
+  // their first-week allocations as `desired`) replace the seed personas, and the
+  // demo sessions are cleared so nothing reads as already-logged. `actual`,
+  // `streak`, and `lastActiveDays` re-derive from the now-empty session list, so a
+  // fresh user opens with zero lived time and nothing "leaning" anywhere.
+  const seedOnboarding = useCallback((nextIdentities) => {
+    if (Array.isArray(nextIdentities) && nextIdentities.length) {
+      setIdentities(nextIdentities);
+      // the allocations the user just set ARE this week's plan — record them as
+      // the first entry of the plan history so the opening week reads truthfully.
+      const plan = {};
+      nextIdentities.forEach((i) => { plan[i.id] = i.desired; });
+      setPlanHistory({ [weekStartMs()]: plan });
+    }
+    setSessions([]);
+  }, []);
 
   const enter = useCallback(() => {
     setStarted(true);
@@ -208,77 +351,82 @@ export function StoreProvider({ children }) {
 
   const closeAllMet = useCallback(() => setAllMetOpen(false), []);
 
+  // ---- Derived "live" state: a single source of truth (logged sessions) ----
+  // `actual` (this week's points), `lastActiveDays`, and `streak` are no longer
+  // stored counters — they're computed from `sessions` against the current
+  // calendar week. So they reset on their own at the week boundary and never
+  // drift. `identities`/`relax` state still hold the editable fields (name,
+  // glyph, hue, desired); these overlays add the activity fields on top.
+  const currentWeek = weekStartMs();
+  const liveIdentities = useMemo(
+    () =>
+      identities.map((i) => ({
+        ...i,
+        actual: Math.min(60, weekPoints(sessions, i.id)),
+        lastActiveDays: daysSinceLast(sessions, i.id, i.lastActiveDays),
+        streak: dayStreak(sessions, i.id),
+      })),
+    [identities, sessions, currentWeek]
+  );
+  const liveRelax = useMemo(
+    () => ({
+      ...relax,
+      actual: Math.min(relax.desired, weekPoints(sessions, 'relax')),
+      lastActiveDays: daysSinceLast(sessions, 'relax', relax.lastActiveDays),
+    }),
+    [relax, sessions, currentWeek]
+  );
+  // the triumph fires once per *calendar* week: it's "already fired" only when
+  // the stored week-start matches the week we're in now (so it re-arms itself
+  // every week, and commitWeekPlan re-arms it mid-week by clearing the stamp).
+  const allMetFired = allMetWeek === currentWeek;
+
   // Whole-week triumph — fire as soon as every active identity has met its
   // intention and we haven't celebrated yet this week. Reactive (watches state),
   // so it catches *any* path to all-met: a log, the end-of-day review, planning
   // intentions down, or retiring the last unmet identity. Gated on `hydrated`
-  // (no fire mid-load) and the persisted per-week flag (shows once; commitWeekPlan
-  // re-arms it). desired 0 (rested) counts as trivially met.
+  // (no fire mid-load) and the per-week stamp. desired 0 (rested) counts as met.
   useEffect(() => {
     if (!hydrated || allMetFired) return;
-    const allMet = identities.length > 0 && identities.every((i) => i.actual >= i.desired);
+    const allMet = liveIdentities.length > 0 && liveIdentities.every((i) => i.actual >= i.desired);
     if (!allMet) return;
-    setAllMetFired(true);
-    storage.setItem(KEY_ALLMET, '1');
+    setAllMetWeek(currentWeek);
+    storage.setItem(KEY_ALLMET, String(currentWeek));
     setAllMetOpen(true);
     setCelebrate(null); // the triumph supersedes any single-identity celebration
-  }, [hydrated, allMetFired, identities]);
+  }, [hydrated, allMetFired, liveIdentities, currentWeek]);
 
   // opts.silent suppresses the per-item toast (the end-of-day review applies
   // several logs at once and shows a single summary toast instead).
   const commitLog = useCallback((idn, mins, note, opts) => {
-    const bump = Math.max(1, Math.round(mins / 12));
+    const bump = SESSION_POINTS(mins);
     const title = (note || '').trim(); // optional session label typed in the log sheet
     const silent = !!(opts && opts.silent);
 
-    // Relaxation: fill up to the allowance you set; the rest is honest Drift.
+    // Logging just records a session with a real timestamp — `actual`, `streak`,
+    // and `lastActiveDays` re-derive from `sessions` on the next render. No
+    // counters to bump, so a new week's window starts fresh automatically.
+
+    // Relaxation: fill up to the allowance you set; beyond it the allowance just
+    // caps (rest is never a failure — there's nowhere for it to "spill" to).
     if (idn.isRelax) {
-      // computed purely from current state (relax is in this callback's deps),
-      // so the setState updaters stay side-effect free
-      const space = Math.max(0, relax.desired - relax.actual);
-      const toRelax = Math.min(bump, space);
-      const spill = bump - toRelax;
-      setRelax((r) => ({ ...r, actual: Math.min(r.desired, r.actual + toRelax), lastActiveDays: 0 }));
-      // any overflow beyond the allowance becomes Drift, tracked as `spill` so it
-      // survives app toggles (drift's `actual` is derived from apps + spill)
-      if (spill > 0) setDrift((d) => ({ ...d, spill: (d.spill || 0) + spill }));
-      setSessions((s) => [{ id: 'relax', label: title || 'Relaxation', mins, when: 'Just now' }, ...s]);
+      const overAllowance = weekPoints(sessions, 'relax') + bump >= relax.desired;
+      setSessions((s) => { const ts = Date.now(); return [{ id: 'relax', label: title || 'Relaxation', mins, ts, when: fmtWhen(ts) }, ...s]; });
       setLogOpen(false);
-      if (!silent) showToast({ kind: 'log', name: 'Relaxation', mins, idn, spill }, 2800);
+      if (!silent) showToast({ kind: 'log', name: 'Relaxation', mins, idn, full: overAllowance }, 2800);
       return;
     }
 
     // did this log push the identity from under its intention to met? (celebrate
-    // once, on the crossing — not every log after it's already met)
-    const cur = identities.find((x) => x.id === idn.id);
+    // once, on the crossing — not every log after it's already met). Computed
+    // from the live (derived) actual plus this session's bump.
+    const cur = liveIdentities.find((x) => x.id === idn.id);
     const newActual = cur ? Math.min(60, cur.actual + bump) : 0;
     const metNow = cur && cur.desired > 0 && cur.actual < cur.desired && newActual >= cur.desired;
-    // projected list (only `actual` matters for the all-met check) — kept as a
-    // concrete array for the transition test; the state update stays functional
-    // so batched (review) logs still compose correctly.
-    const nextIdentities = identities.map((i) => (i.id === idn.id ? { ...i, actual: newActual } : i));
+    // projected list (only `actual` matters for the all-met check)
+    const nextIdentities = liveIdentities.map((i) => (i.id === idn.id ? { ...i, actual: newActual } : i));
 
-    setIdentities((prev) =>
-      prev.map((i) =>
-        i.id === idn.id
-          ? { ...i, actual: Math.min(60, i.actual + bump), lastActiveDays: 0, streak: i.streak + 1 }
-          : i
-      )
-    );
-    // logging an identity reclaims drift: shrink the tracked apps' share (the
-    // app-derived portion). `actual` is derived, so we only scale the apps.
-    setDrift((d) => {
-      const appSum = driftSum(d.apps);
-      const next = Math.max(0, appSum - Math.round(bump / 2));
-      const ratio = appSum ? next / appSum : 0;
-      return {
-        ...d,
-        apps: d.apps.map((a) =>
-          a.tracked ? { ...a, pct: a.pct * ratio, mins: Math.round(a.mins * ratio) } : a
-        ),
-      };
-    });
-    setSessions((s) => [{ id: idn.id, label: title || idn.name + ' session', mins, when: 'Just now' }, ...s]);
+    setSessions((s) => { const ts = Date.now(); return [{ id: idn.id, label: title || idn.name + ' session', mins, ts, when: fmtWhen(ts) }, ...s]; });
     setLogOpen(false);
     // if this log completes the week, let the reactive all-met effect own the
     // moment (whole-week triumph > single-identity crossing > plain toast) — skip
@@ -287,7 +435,7 @@ export function StoreProvider({ children }) {
     if (willFireAllMet) return;
     if (metNow && !silent) setCelebrate({ ...cur, actual: newActual });
     else if (!silent) showToast({ kind: 'log', name: idn.name, mins, idn });
-  }, [identities, relax, showToast, allMetFired]);
+  }, [liveIdentities, relax, sessions, showToast, allMetFired]);
 
   const clearCelebrate = useCallback(() => setCelebrate(null), []);
 
@@ -308,13 +456,13 @@ export function StoreProvider({ children }) {
   );
 
   // End-of-day review: apply several logs at once. entries: [{ id, mins }].
-  // Reuses commitLog per entry (so drift reclaim / relax spill / sessions all
-  // stay correct), silenced, then shows one summary toast.
+  // Reuses commitLog per entry (so identity bumps / relax / sessions all stay
+  // correct), silenced, then shows one summary toast.
   const openReview = useCallback(() => setReview(true), []);
   const closeReview = useCallback(() => setReview(false), []);
   const commitReview = useCallback(
     (entries) => {
-      const targets = relax.tracked ? [...identities, relax] : identities;
+      const targets = liveRelax.tracked ? [...liveIdentities, liveRelax] : liveIdentities;
       let totalMins = 0;
       let count = 0;
       entries.forEach(({ id, mins }) => {
@@ -330,28 +478,25 @@ export function StoreProvider({ children }) {
       // triumph (over this toast); otherwise the summary toast stands alone.
       if (count > 0) showToast({ kind: 'review', count, mins: totalMins });
     },
-    [identities, relax, commitLog, showToast]
+    [liveIdentities, liveRelax, commitLog, showToast]
   );
 
   const openPlan = useCallback(() => setPlanOpen(true), []);
   const closePlan = useCallback(() => setPlanOpen(false), []);
   const commitWeekPlan = useCallback((plan) => {
     setIdentities((prev) => prev.map((i) => (plan[i.id] != null ? { ...i, desired: plan[i.id] } : i)));
+    // snapshot this week's plan so completed weeks keep the intention they were
+    // actually planned with (keyed by week start; re-committing overwrites it).
+    setPlanHistory((h) => ({ ...h, [weekStartMs()]: { ...plan } }));
     setWeekPlanned(true);
     storage.setItem(KEY_WEEK, '1');
-    // re-planning re-arms the whole-week celebration (new intentions to meet)
-    setAllMetFired(false);
+    // re-planning re-arms the whole-week celebration (new intentions to meet),
+    // even within the same week — clear the per-week stamp so it can fire again.
+    setAllMetWeek(0);
     storage.removeItem(KEY_ALLMET);
     setPlanOpen(false);
     showToast({ kind: 'plan' });
   }, [showToast]);
-
-  const toggleDriftApp = useCallback((id) => {
-    setDrift((d) => ({
-      ...d,
-      apps: d.apps.map((a) => (a.id === id ? { ...a, tracked: !a.tracked } : a)),
-    }));
-  }, []);
 
   const goTo = useCallback((t) => {
     setTab(t);
@@ -382,7 +527,7 @@ export function StoreProvider({ children }) {
           const name = (raw || '').trim();
           if (!name) return;
           if (acc.some((i) => i.name.toLowerCase() === name.toLowerCase())) return;
-          const hue = assignHue([...acc, drift, relax]);
+          const hue = assignHue([...acc, relax]);
           acc.push({
             id: name.toLowerCase().replace(/\s+/g, '-'),
             name,
@@ -398,7 +543,7 @@ export function StoreProvider({ children }) {
       });
       setAddOpen(false);
     },
-    [drift, relax]
+    [relax]
   );
   const openAdd = useCallback(() => setAddOpen(true), []);
   const closeAdd = useCallback(() => setAddOpen(false), []);
@@ -408,12 +553,14 @@ export function StoreProvider({ children }) {
   }, []);
 
   const themeObj = themes[theme] || themes.dark;
-  // Drift's `actual` is derived (apps + spill), never stored. Consumers get this
-  // view; the raw `drift` state (apps/spill) is what's mutated and persisted.
-  const driftView = useMemo(() => ({ ...drift, actual: driftActual(drift) }), [drift]);
-  const align = alignmentFn(identities, driftView);
+  const align = alignmentFn(liveIdentities);
+  // the live calendar week (label + day-of-week), recomputed when it rolls over
+  const week = useMemo(
+    () => ({ label: weekLabel(), short: 'This week', daysIn: weekDayIndex(), daysTotal: 7 }),
+    [currentWeek]
+  );
   // what you can log time to: your identities, plus Relaxation if it's tracked
-  const logTargets = relax.tracked ? [...identities, relax] : identities;
+  const logTargets = liveRelax.tracked ? [...liveIdentities, liveRelax] : liveIdentities;
 
   const value = useMemo(
     () => ({
@@ -426,15 +573,15 @@ export function StoreProvider({ children }) {
       goTo,
       form,
       setForm,
-      identities,
+      identities: liveIdentities,
       setIdentities,
       retired,
       retireIdentity,
-      drift: driftView,
-      relax,
+      relax: liveRelax,
       sessions,
+      planHistory,
       align,
-      week: THIS_WEEK,
+      week,
       logTargets,
       logOpen,
       logPreset,
@@ -446,7 +593,6 @@ export function StoreProvider({ children }) {
       closePlan,
       commitWeekPlan,
       weekPlanned,
-      toggleDriftApp,
       addOpen,
       openAdd,
       closeAdd,
@@ -470,7 +616,19 @@ export function StoreProvider({ children }) {
       setReminderTime,
       freeHours,
       setFreeHours,
+      setRelaxAllowance,
+      session,
+      backupOpen,
+      openBackup,
+      closeBackup,
+      signOut,
+      authConfigured: auth.isConfigured,
+      userName,
+      setUserName,
+      authSeen,
+      markAuthSeen,
       setDesired,
+      seedOnboarding,
       enter,
       restart,
       toast,
@@ -478,13 +636,14 @@ export function StoreProvider({ children }) {
       colorsFor: (idn) => identityColors(idn, themeObj),
     }),
     [
-      theme, themeObj, setTheme, started, hydrated, tab, goTo, form, setForm, identities, retired, retireIdentity, driftView,
-      relax, sessions, align, logTargets, logOpen, logPreset, openLog, closeLog,
+      theme, themeObj, setTheme, started, hydrated, tab, goTo, form, setForm, liveIdentities, retired, retireIdentity,
+      liveRelax, sessions, planHistory, align, week, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
-      toggleDriftApp, addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
+      addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
       focusCosmos, clearCosmos, detail, openDetail, closeDetail, review, openReview, closeReview, commitReview,
-      celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, freeHours, setFreeHours,
-      setDesired, enter, restart, toast,
+      celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, freeHours, setFreeHours, setRelaxAllowance,
+      session, backupOpen, openBackup, closeBackup, signOut, userName, setUserName, authSeen, markAuthSeen,
+      setDesired, seedOnboarding, enter, restart, toast,
     ]
   );
 

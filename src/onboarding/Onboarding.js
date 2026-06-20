@@ -1,21 +1,23 @@
-/* Onboarding flow (5 steps), ported from onboarding.jsx. Rendered while
-   onboarding is incomplete. Local state only — completing it just flips the
-   persisted `started` flag (matching the prototype). */
-import React, { useState } from 'react';
+/* Onboarding flow (6 steps): welcome → choose identities → cadence → rest
+   allowance → allocate → reveal. Rendered while onboarding is incomplete. On
+   completion it carries free hours + rest allowance into the store and flips the
+   persisted `started` flag. */
+import React, { useState, useMemo } from 'react';
 import { View, Text, ScrollView, TextInput, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Line, Circle } from 'react-native-svg';
 import { useStore, useTheme } from '../store/Store';
-import { CATALOG, DRIFT_APPS, IDENTITIES, USER } from '../data/data';
-import { Eyebrow, Button, Chip, Glyph, dotStyle } from '../components/primitives';
+import { CATALOG, IDENTITIES, RELAX, assignHue } from '../data/data';
+import { Eyebrow, Button, Chip } from '../components/primitives';
 import Icon from '../components/Icon';
 import Starfield from '../components/Starfield';
 import StatusBar from '../components/StatusBar';
 import CosmosViz from '../viz/CosmosViz';
 import ConstellationViz from '../viz/ConstellationViz';
 import OnbCadence from './OnbCadence';
+import OnbRest from './OnbRest';
 import OnbAllocate from './OnbAllocate';
-import { CADENCE, FREE_TIME, personaColor } from './helpers';
+import { CADENCE, personaColor } from './helpers';
 import { SPACING, bleed } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
@@ -43,24 +45,37 @@ function WelcomeConstellation() {
 
 export default function Onboarding() {
   const { t } = useTheme();
-  const { enter, form, setForm, setFreeHours: persistFreeHours } = useStore();
+  const { enter, form, setForm, setFreeHours: persistFreeHours, setRelaxAllowance, seedOnboarding, userName } = useStore();
   const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState(0);
-  const [selected, setSelected] = useState(['Writer', 'Reader', 'Engineer', 'Musician', 'Painter', FREE_TIME]);
+  const [selected, setSelected] = useState(['Writer', 'Reader', 'Engineer', 'Musician', 'Painter']);
   const [custom, setCustom] = useState('');
   const [cadence] = useState('week'); // time is now fixed to a weekly rhythm
   const [freeHours, setFreeHours] = useState(CADENCE.week.def);
-  const [tracked, setTracked] = useState(() => new Set(DRIFT_APPS.filter((a) => a.tracked).map((a) => a.id)));
-  const [appDest, setAppDest] = useState('drift'); // where tracked-app time rolls up: 'drift' | 'relax'
+  const [restPct, setRestPct] = useState(15); // Relaxation allowance (its own step)
+  const [alloc, setAlloc] = useState({}); // name -> % of the week (set in the allocate step)
 
-  const toggleApp = (id) =>
-    setTracked((s) => {
-      const n = new Set(s);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
+  // The user's real cosmos: each chosen identity carries its first-week % as
+  // `desired`. Canonical names reuse the seed persona's id/glyph/palette so
+  // colors stay on-brand; typed-in ones get a fresh, well-separated hue. Fed to
+  // both the reveal preview and `seedOnboarding`, so what you see is what you get.
+  const builtIdentities = useMemo(() => {
+    const base = Math.floor(100 / Math.max(1, selected.length) / 5) * 5;
+    const pctFor = (n) => (alloc[n] != null ? alloc[n] : base);
+    const acc = [];
+    selected.forEach((name) => {
+      const canon = IDENTITIES.find((i) => i.name.toLowerCase() === name.toLowerCase());
+      if (canon) {
+        acc.push({ id: canon.id, name: canon.name, glyph: canon.glyph, palette: canon.palette, hue: canon.hue, desired: pctFor(name), actual: 0, lastActiveDays: 99, streak: 0 });
+      } else {
+        const hue = assignHue([...acc, RELAX]);
+        acc.push({ id: name.toLowerCase().replace(/\s+/g, '-'), name, glyph: name[0].toUpperCase(), hue, desired: pctFor(name), actual: 0, lastActiveDays: 99, streak: 0 });
+      }
     });
+    return acc;
+  }, [selected, alloc]);
+
   const toggle = (name) => setSelected((s) => (s.includes(name) ? s.filter((x) => x !== name) : [...s, name]));
   const addCustom = () => {
     const n = custom.trim();
@@ -153,88 +168,6 @@ export default function Onboarding() {
               </Button>
             </View>
 
-            {/* relaxation caption — only while Relaxation Time is selected */}
-            {selected.includes(FREE_TIME) && (
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 9, marginTop: 16 }}>
-                <View style={[dotStyle(11, t.id.relax.color), { marginTop: 4 }]} />
-                <Text style={{ flex: 1, fontSize: 13.5, color: t.inkFaint, fontFamily: sans(500), lineHeight: 19 }}>
-                  <Text style={{ color: t.inkSoft, fontFamily: sans(600) }}>Relaxation Time</Text> reserves guilt-free hours for rest, scrolling, nothing in particular. Deselect it to give every hour to an identity.
-                </Text>
-              </View>
-            )}
-
-            {/* track app usage — always available */}
-            <View style={{ marginTop: 16, padding: 20, borderRadius: t.radii.lg, backgroundColor: t.surface, borderWidth: 1, borderColor: t.line }}>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Text style={{ fontSize: 14.5, fontFamily: sans(700), color: t.ink }}>Track app usage</Text>
-                <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: t.inkFaint }}>optional</Text>
-              </View>
-              <Text style={{ fontSize: 13, color: t.inkSoft, lineHeight: 19, marginBottom: 14 }}>
-                Choose which apps to count automatically — their time is measured for you.
-              </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 9 }}>
-                {DRIFT_APPS.map((a) => {
-                  const on = tracked.has(a.id);
-                  const relaxOn = selected.includes(FREE_TIME);
-                  const destColor = relaxOn && appDest === 'relax' ? t.id.relax.color : t.id.drift.color;
-                  return (
-                    <Chip
-                      key={a.id}
-                      selected={on}
-                      onPress={() => toggleApp(a.id)}
-                      bg={on ? destColor : undefined}
-                      style={{ paddingHorizontal: 14, paddingVertical: 9 }}
-                    >
-                      <Icon name={on ? 'check' : 'plus'} size={14} stroke={on ? 2.6 : 2.4} color={on ? '#fff' : t.ink} />
-                      <Text style={{ fontSize: 14, fontFamily: sans(600), color: on ? '#fff' : t.ink }}>{a.name}</Text>
-                    </Chip>
-                  );
-                })}
-              </View>
-
-              {tracked.size > 0 &&
-                (selected.includes(FREE_TIME) ? (
-                  <View style={{ marginTop: 18, paddingTop: 18, borderTopWidth: 1, borderTopColor: t.line2 }}>
-                    <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: t.ink, marginBottom: 4 }}>Where should this time count?</Text>
-                    <Text style={{ fontSize: 12.5, color: t.inkSoft, lineHeight: 18, marginBottom: 14 }}>
-                      Time on these apps can be rest you planned for, or time that quietly slips away.
-                    </Text>
-                    <View style={{ gap: 10 }}>
-                      {[
-                        { key: 'relax', color: t.id.relax.color, soft: t.id.relax.soft, glyph: '♾', title: 'Relaxation Time Allowance', desc: 'Counts as the guilt-free rest you allotted. Once you pass your weekly Relaxation allowance, any extra app time spills into Drift.' },
-                        { key: 'drift', color: t.id.drift.color, soft: t.id.drift.soft, glyph: '∞', title: 'Drift', desc: 'Counts as unplanned time from the start — the hours you’d like to see, and slowly reclaim.' },
-                      ].map((o) => {
-                        const sel = appDest === o.key;
-                        return (
-                          <Pressable
-                            key={o.key}
-                            onPress={() => setAppDest(o.key)}
-                            style={{ flexDirection: 'row', gap: 13, padding: 15, paddingVertical: 14, borderRadius: t.radii.sm, backgroundColor: sel ? o.soft : t.surface, borderWidth: 1.5, borderColor: sel ? o.color : t.line2 }}
-                          >
-                            <Glyph char={o.glyph} size={30} fontSize={15} color={o.color} />
-                            <View style={{ flex: 1 }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <Text style={{ fontSize: 14.5, fontFamily: sans(700), color: o.color }}>{o.title}</Text>
-                                {sel && <Icon name="check" size={15} stroke={2.6} color={o.color} />}
-                              </View>
-                              <Text style={{ fontSize: 12.5, color: t.inkSoft, lineHeight: 18, marginTop: 4 }}>{o.desc}</Text>
-                            </View>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-                ) : (
-                  <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: t.line2, flexDirection: 'row', gap: 11, alignItems: 'flex-start' }}>
-                    <Glyph char="∞" size={26} fontSize={13} color={t.id.drift.color} />
-                    <Text style={{ flex: 1, fontSize: 12.5, color: t.inkSoft, lineHeight: 19 }}>
-                      This time counts as <Text style={{ color: t.ink, fontFamily: sans(700) }}>Drift</Text> — the hours you’d like to see and reclaim. Add{' '}
-                      <Text style={{ color: t.id.relax.color, fontFamily: sans(700) }}>Relaxation Time</Text> above to budget some of it as guilt-free rest instead.
-                    </Text>
-                  </View>
-                ))}
-            </View>
-
             <View style={{ marginTop: 'auto', paddingTop: 24, paddingBottom: 30 }}>
               <Text style={{ fontSize: 14, color: t.inkFaint, fontFamily: sans(600), textAlign: 'center', marginBottom: 14 }}>{selected.length} chosen</Text>
               <Button onPress={next} disabled={selected.length < 2}>
@@ -249,13 +182,18 @@ export default function Onboarding() {
           <OnbCadence cadence={cadence} freeHours={freeHours} onSetHours={setFreeHours} onBack={() => setStep(1)} onContinue={next} />
         )}
 
-        {/* STEP 3 — allocate */}
+        {/* STEP 3 — rest allowance */}
         {step === 3 && (
-          <OnbAllocate selected={selected} cadence={cadence} freeHours={freeHours} onBack={() => setStep(2)} onContinue={next} />
+          <OnbRest cadence={cadence} freeHours={freeHours} restPct={restPct} onSet={setRestPct} onBack={() => setStep(2)} onContinue={next} />
         )}
 
-        {/* STEP 4 — reveal */}
+        {/* STEP 4 — allocate */}
         {step === 4 && (
+          <OnbAllocate selected={selected} cadence={cadence} freeHours={freeHours} alloc={alloc} onSetAlloc={setAlloc} onBack={() => setStep(3)} onContinue={next} />
+        )}
+
+        {/* STEP 5 — reveal */}
+        {step === 5 && (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <Eyebrow style={{ marginBottom: 18 }}>Your cosmos</Eyebrow>
             <Text style={{ fontFamily: serif(500), fontSize: 32, color: t.ink, marginBottom: 10, textAlign: 'center' }}>A map of who you want to be.</Text>
@@ -289,14 +227,19 @@ export default function Onboarding() {
                 whole width (it measures its own container, so it stays responsive) */}
             <View style={{ alignSelf: 'stretch', ...bleed(SPACING.onboardingPad), marginVertical: 12 }}>
               {form === 'constellation' ? (
-                <ConstellationViz identities={IDENTITIES} allowLog={false} interactive={false} name={USER.name} />
+                <ConstellationViz identities={builtIdentities} allowLog={false} interactive={false} name={userName} />
               ) : (
-                <CosmosViz identities={IDENTITIES} allowLog={false} interactive={false} name={USER.name} />
+                <CosmosViz identities={builtIdentities} allowLog={false} interactive={false} name={userName} />
               )}
             </View>
             <Button
               onPress={() => {
-                persistFreeHours(freeHours); // carry the chosen free hours into the app
+                // carry the chosen identities, free hours + rest allowance into the
+                // app, starting with no logged time (seedOnboarding clears the demo
+                // sessions) so nothing reads as already-lived.
+                seedOnboarding(builtIdentities);
+                persistFreeHours(freeHours);
+                setRelaxAllowance(restPct);
                 enter();
               }}
               style={{ paddingHorizontal: 48 }}
@@ -309,7 +252,7 @@ export default function Onboarding() {
 
       {/* progress dots */}
       <View style={{ paddingTop: 14, paddingBottom: 20 + insets.bottom, flexDirection: 'row', gap: 7, justifyContent: 'center' }}>
-        {[0, 1, 2, 3, 4].map((i) => (
+        {[0, 1, 2, 3, 4, 5].map((i) => (
           <View
             key={i}
             style={{

@@ -144,6 +144,9 @@ export default function ConstellationViz({
   const selectedId = controlled ? focusedId || null : localSel;
 
   const n = identities.length;
+  // a sparse constellation looks like tiny dots — scale stars up when there are
+  // few, smoothly easing back to 1× by ~5 stars (never shrinks a busy sky).
+  const starK = Math.min(1.5, Math.max(1, 1 + (5 - n) * 0.12));
 
   // Static layout (per-star params, positions, MST edges, height, starfield)
   // depends only on the identity count — compute it once per count, NOT every
@@ -289,11 +292,11 @@ export default function ConstellationViz({
             const isSel = idn.id === selectedId;
             const dim = selectedId && !isSel;
             const fill = fillOf(idn);
-            const coreR = (3 + Math.sqrt(idn.actual) * 1.7) * pulse * (isSel ? 1.22 : 1);
-            const gap = 9 + idn.desired * 0.5 - (3 + Math.sqrt(idn.actual) * 1.7);
+            const coreR = (3 + Math.sqrt(idn.actual) * 1.7) * pulse * (isSel ? 1.22 : 1) * starK;
+            const gap = (9 + idn.desired * 0.5 - (3 + Math.sqrt(idn.actual) * 1.7)) * starK;
             const haloR = coreR + gap;
             const bright = (0.42 + 0.58 * fill) * (0.85 + 0.15 * pulse);
-            const glint = coreR + 6;
+            const glint = coreR + 6 * starK;
             return (
               <G key={idn.id} opacity={isSel ? 1 : dim ? 0.34 : 1} onPress={interactive ? () => focusNode(idn) : undefined}>
                 {/* intention halo */}

@@ -51,7 +51,6 @@ export const lightTheme = {
     engineer: { color: oklch(0.6, 0.085, 168), soft: oklcha(0.6, 0.085, 168, 0.13), deep: '#1f7d5e' },
     musician: { color: oklch(0.585, 0.105, 322), soft: oklcha(0.585, 0.105, 322, 0.13), deep: '#9b3b7d' },
     painter: { color: oklch(0.7, 0.105, 70), soft: oklcha(0.7, 0.105, 70, 0.13), deep: '#9a7a24' },
-    drift: { color: oklch(0.62, 0.014, 280), soft: oklcha(0.62, 0.014, 280, 0.13), deep: '#4a4757' },
     relax: { color: oklch(0.64, 0.075, 210), soft: oklcha(0.64, 0.075, 210, 0.13), deep: '#2f6d82' },
   },
 };
@@ -85,7 +84,6 @@ export const darkTheme = {
     engineer: { color: oklch(0.76, 0.1, 168), soft: oklcha(0.76, 0.1, 168, 0.18), deep: '#1f7d5e' },
     musician: { color: oklch(0.74, 0.115, 326), soft: oklcha(0.74, 0.115, 326, 0.18), deep: '#9b3b7d' },
     painter: { color: oklch(0.82, 0.11, 80), soft: oklcha(0.82, 0.11, 80, 0.18), deep: '#9a7a24' },
-    drift: { color: oklch(0.66, 0.018, 280), soft: oklcha(0.66, 0.018, 280, 0.18), deep: '#4a4757' },
     relax: { color: oklch(0.76, 0.085, 210), soft: oklcha(0.76, 0.085, 210, 0.18), deep: '#2f6d82' },
   },
 };
@@ -93,7 +91,7 @@ export const darkTheme = {
 export const themes = { light: lightTheme, dark: darkTheme };
 
 /* Resolve an identity's concrete colors for the active theme.
-   - Canonical personas carry a `palette` key (writer/reader/.../drift).
+   - Canonical personas carry a `palette` key (writer/reader/.../relax).
    - Runtime-added personas carry a numeric `hue` and use the palette formula
      (theme-independent), mirroring data.js mkColor(). */
 export function identityColors(idn, theme) {

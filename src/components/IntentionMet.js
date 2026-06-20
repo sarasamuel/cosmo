@@ -137,7 +137,6 @@ export default function IntentionMet({ idn, onClose }) {
         >
           <Text style={{ fontFamily: sans(700), fontSize: 16, color: '#0a0a15' }}>Keep it up!</Text>
         </Pressable>
-        <Text style={{ fontSize: 12, fontFamily: sans(600), color: t.inkFaint, marginTop: 18, letterSpacing: 0.4 }}>tap anywhere to continue</Text>
       </Animated.View>
     </Pressable>
   );

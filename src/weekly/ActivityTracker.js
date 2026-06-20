@@ -2,21 +2,22 @@
    day they logged a session. Ported from ActivityTracker in weekly.jsx. The CSS
    grid (overflow-x auto) becomes a horizontal ScrollView with fixed-width day
    columns. */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { useStore, useTheme } from '../store/Store';
-import { monthDone } from '../data/data';
+import { monthActivity } from '../data/data';
 import { Card, SectionTitle } from '../components/primitives';
 import { serif, sans } from '../theme/fonts';
 
-// May 1 2026 is a Friday → weekends fall on these dates
-const WEEKEND = new Set([2, 3, 9, 10, 16, 17, 23, 24, 30, 31]);
 const LABEL_W = 70;
 const DAY_W = 24;
 
-export default function ActivityTracker({ month }) {
+export default function ActivityTracker() {
   const { t, colorsFor } = useTheme();
-  const { identities } = useStore();
+  const { identities, sessions } = useStore();
+  // current month, derived live from real session timestamps
+  const month = useMemo(() => monthActivity(sessions), [sessions]);
+  const done = (id) => month.done[id] || [];
   const days = Array.from({ length: month.days }, (_, i) => i + 1);
 
   return (
@@ -35,7 +36,7 @@ export default function ActivityTracker({ month }) {
             <View style={{ width: LABEL_W }} />
             {days.map((d) => (
               <View key={d} style={{ width: DAY_W, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 1, borderLeftColor: t.line2, height: 26 }}>
-                <Text style={{ fontSize: 10.5, fontFamily: sans(700), color: WEEKEND.has(d) ? t.inkSoft : t.inkFaint }}>{d}</Text>
+                <Text style={{ fontSize: 10.5, fontFamily: sans(700), color: month.weekend.has(d) ? t.inkSoft : t.inkFaint }}>{d}</Text>
               </View>
             ))}
           </View>
@@ -49,7 +50,7 @@ export default function ActivityTracker({ month }) {
                   {i.name}
                 </Text>
                 {days.map((d) => {
-                  const on = monthDone(i.id, d);
+                  const on = done(i.id).includes(d);
                   return (
                     <View
                       key={d}
@@ -60,7 +61,7 @@ export default function ActivityTracker({ month }) {
                         justifyContent: 'center',
                         borderLeftWidth: 1,
                         borderLeftColor: t.line2,
-                        backgroundColor: WEEKEND.has(d) ? t.surface2 : 'transparent',
+                        backgroundColor: month.weekend.has(d) ? t.surface2 : 'transparent',
                       }}
                     >
                       <View
@@ -86,7 +87,7 @@ export default function ActivityTracker({ month }) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 16, paddingHorizontal: 4 }}>
         {identities.map((i) => {
           const c = colorsFor(i);
-          const count = (month.done[i.id] || []).length;
+          const count = done(i.id).length;
           return (
             <View key={i.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
               <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: c.color }} />

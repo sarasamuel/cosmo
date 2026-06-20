@@ -2,25 +2,25 @@
 import React from 'react';
 import { ScrollView, View, Text } from 'react-native';
 import { useStore, useTheme } from '../store/Store';
-import { INSIGHTS, COACH } from '../data/data';
+import { pastWeeks } from '../data/data';
 import { Card, Eyebrow, Pill } from '../components/primitives';
 import Icon from '../components/Icon';
 import CoachNote from '../components/CoachNote';
+import { coachNote, buildInsights } from '../lib/coach';
 import { useScreenPad } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
-const TONE = {
-  neglect: { palette: 'painter', icon: 'clock' },
-  nudge: { palette: 'writer', icon: 'arrow' },
-  trade: { palette: 'drift', icon: 'bell' },
-  balance: { palette: 'engineer', icon: 'flame' },
-};
+// `kind` now drives only the icon; each card takes its color from its identity.
+const TONE = { neglect: 'clock', nudge: 'arrow', balance: 'flame' };
 
 export default function Insights() {
-  const { t } = useTheme();
-  const { identities, retired, drift, openLog } = useStore();
-  const find = (id) => identities.find((i) => i.id === id) || retired.find((i) => i.id === id) || drift;
+  const { t, colorsFor } = useTheme();
+  const { identities, retired, sessions, planHistory, openLog } = useStore();
+  const find = (id) => identities.find((i) => i.id === id) || retired.find((i) => i.id === id);
   const pad = useScreenPad();
+  // real insights + last-week reference, derived from the live data (no demo)
+  const insights = buildInsights(identities);
+  const coach = coachNote(identities, pastWeeks(sessions, identities, planHistory, 1)[0]?.rows);
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
@@ -33,35 +33,43 @@ export default function Insights() {
       </View>
 
       <View style={{ marginTop: 22, gap: 14 }}>
-        {INSIGHTS.map((ins, k) => {
-          const tone = TONE[ins.kind];
-          const tColors = t.id[tone.palette];
-          return (
-            <Card key={k} style={{ flexDirection: 'row', gap: 18, padding: 24, alignItems: 'flex-start' }}>
-              <View style={{ width: 44, height: 44, borderRadius: 13, backgroundColor: tColors.color, alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name={tone.icon} size={22} color="#fff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 17, fontFamily: sans(700), lineHeight: 22, marginBottom: 6, color: t.ink }}>{ins.title}</Text>
-                <Text style={{ fontSize: 14.5, color: t.inkSoft, lineHeight: 22 }}>{ins.body}</Text>
-                {ins.action && (
-                  <Pill
-                    bg={tColors.soft}
-                    onPress={() => openLog(ins.id === 'drift' ? null : find(ins.id))}
-                    style={{ marginTop: 14, alignSelf: 'flex-start' }}
-                  >
-                    <Text style={{ fontSize: 13, fontFamily: sans(700), color: t.ink }}>{ins.action}</Text>
-                    <Icon name="chevron" size={14} color={t.ink} />
-                  </Pill>
-                )}
-              </View>
-            </Card>
-          );
-        })}
+        {insights.length === 0 ? (
+          <Card style={{ padding: 24 }}>
+            <Text style={{ fontSize: 14.5, color: t.inkSoft, lineHeight: 22, textAlign: 'center' }}>
+              No observations yet — log a little time across your identities and Cosmo will start noticing where your week leans.
+            </Text>
+          </Card>
+        ) : (
+          insights.map((ins, k) => {
+            const idn = find(ins.id);
+            const c = idn ? colorsFor(idn) : { color: t.ink, soft: t.surface3 };
+            return (
+              <Card key={k} style={{ flexDirection: 'row', gap: 18, padding: 24, alignItems: 'flex-start' }}>
+                <View style={{ width: 44, height: 44, borderRadius: 13, backgroundColor: c.color, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name={TONE[ins.kind]} size={22} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 17, fontFamily: sans(700), lineHeight: 22, marginBottom: 6, color: t.ink }}>{ins.title}</Text>
+                  <Text style={{ fontSize: 14.5, color: t.inkSoft, lineHeight: 22 }}>{ins.body}</Text>
+                  {ins.action && idn && (
+                    <Pill
+                      bg={c.soft}
+                      onPress={() => openLog(idn)}
+                      style={{ marginTop: 14, alignSelf: 'flex-start' }}
+                    >
+                      <Text style={{ fontSize: 13, fontFamily: sans(700), color: t.ink }}>{ins.action}</Text>
+                      <Icon name="chevron" size={14} color={t.ink} />
+                    </Pill>
+                  )}
+                </View>
+              </Card>
+            );
+          })
+        )}
       </View>
 
       <View style={{ marginTop: 22 }}>
-        <CoachNote coach={COACH} />
+        <CoachNote coach={coach} />
       </View>
     </ScrollView>
   );

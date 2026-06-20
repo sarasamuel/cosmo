@@ -15,7 +15,7 @@ const RELAX_NAME = 'Relaxation Time'; // handled separately, never an "identity"
 
 export default function AddIdentitySheet() {
   const { t } = useTheme();
-  const { addOpen: open, identities, drift, relax, closeAdd: onClose, addIdentities: onCommit } = useStore();
+  const { addOpen: open, identities, relax, closeAdd: onClose, addIdentities: onCommit } = useStore();
   const { height } = useWindowDimensions();
 
   const [selected, setSelected] = useState([]);
@@ -54,7 +54,7 @@ export default function AddIdentitySheet() {
   // preview colors: progressively assign the next distinct hue per selected name,
   // mirroring what the store will do on commit (same order → same colors).
   const colorByName = {};
-  let acc = [...identities, drift, relax].map((x) => ({ hue: x.hue }));
+  let acc = [...identities, relax].map((x) => ({ hue: x.hue }));
   selected.forEach((nm) => {
     const h = assignHue(acc);
     acc = [...acc, { hue: h }];

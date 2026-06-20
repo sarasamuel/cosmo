@@ -16,6 +16,7 @@ import TabBar from './src/components/TabBar';
 import LogSheet from './src/components/LogSheet';
 import WeekPlanSheet from './src/weekly/WeekPlanSheet';
 import AddIdentitySheet from './src/components/AddIdentitySheet';
+import BackupSheet from './src/components/BackupSheet';
 import CosmosFocusPanel from './src/components/CosmosFocusPanel';
 import IntentionMet from './src/components/IntentionMet';
 import AllIntentionsMet from './src/components/AllIntentionsMet';
@@ -28,6 +29,7 @@ import Identities from './src/screens/Identities';
 import IdentityDetail from './src/screens/IdentityDetail';
 import EndOfDayReview from './src/screens/EndOfDayReview';
 import Onboarding from './src/onboarding/Onboarding';
+import AuthFlow from './src/onboarding/AuthFlow';
 
 function AppShell() {
   const { t } = useTheme();
@@ -64,6 +66,7 @@ function AppShell() {
       <LogSheet />
       <WeekPlanSheet />
       <AddIdentitySheet />
+      <BackupSheet />
       <IntentionMet idn={celebrate} onClose={clearCelebrate} />
       <AllIntentionsMet open={allMetOpen} form={form} identities={identities} onClose={closeAllMet} onShare={closeAllMet} />
     </View>
@@ -71,14 +74,15 @@ function AppShell() {
 }
 
 function Root() {
-  const { started, hydrated, theme } = useStore();
+  const { started, hydrated, theme, authSeen } = useStore();
   if (!hydrated) {
     return <View style={{ flex: 1, backgroundColor: theme === 'light' ? '#ecebf6' : '#0a0a15' }} />;
   }
   return (
     <>
       <ExpoStatusBar style={theme === 'light' ? 'dark' : 'light'} hidden />
-      {started ? <AppShell /> : <Onboarding />}
+      {/* auth entry first (sign in or skip) → onboarding → app */}
+      {!authSeen ? <AuthFlow /> : started ? <AppShell /> : <Onboarding />}
     </>
   );
 }

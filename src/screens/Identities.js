@@ -23,7 +23,7 @@ const TIME_PRESETS = [
 
 export default function Identities() {
   const { t, colorsFor } = useTheme();
-  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, restart, theme, setTheme, reminder, setReminderEnabled, setReminderTime } = useStore();
+  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, restart, theme, setTheme, reminder, setReminderEnabled, setReminderTime, session, openBackup, signOut } = useStore();
   const total = identities.reduce((s, i) => s + i.desired, 0);
   const maxPlan = Math.max(...identities.map((i) => i.desired), 1);
   const pad = useScreenPad();
@@ -186,6 +186,28 @@ export default function Identities() {
               );
             })}
           </View>
+        )}
+      </Card>
+
+      {/* cloud backup — passwordless email-code sign-in (local-first; opt-in) */}
+      <Card style={{ marginTop: 12, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+        <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: session ? t.good : t.surface2, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name={session ? 'check' : 'sparkle'} size={18} stroke={2.4} color={session ? '#fff' : t.inkSoft} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>Cloud backup</Text>
+          <Text numberOfLines={1} style={{ fontSize: 13, color: t.inkSoft, fontFamily: sans(600) }}>
+            {session ? `Backed up · ${session.user?.email || 'signed in'}` : 'Save your progress to a new phone'}
+          </Text>
+        </View>
+        {session ? (
+          <Pill bg={t.surface2} onPress={signOut} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+            <Text style={{ color: t.inkSoft, fontFamily: sans(700), fontSize: 13 }}>Sign out</Text>
+          </Pill>
+        ) : (
+          <Pill bg={t.ink} onPress={openBackup} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+            <Text style={{ color: t.bg, fontFamily: sans(700), fontSize: 13 }}>Back up</Text>
+          </Pill>
         )}
       </Card>
 

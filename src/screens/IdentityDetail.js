@@ -10,7 +10,7 @@ import { useStore, useTheme } from '../store/Store';
 import { Card, Glyph, Eyebrow, SectionTitle } from '../components/primitives';
 import Icon from '../components/Icon';
 import DualBar from '../components/DualBar';
-import { IDENTITIES, MONTH, WEEKS, fmtMins } from '../data/data';
+import { IDENTITIES, fmtMins, fmtWhen, monthActivity, recentWeeksFor } from '../data/data';
 import { useScreenPad } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
@@ -67,7 +67,7 @@ export default function IdentityDetail({
   onRetire,
 }) {
   const { t, colorsFor } = useTheme();
-  const { identities, sessions, retireIdentity, form } = useStore();
+  const { identities, sessions, planHistory, retireIdentity, form } = useStore();
   const pad = useScreenPad();
 
   // Resolve the live identity from the store (by id) so the screen reflects
@@ -87,16 +87,16 @@ export default function IdentityDetail({
       ]
     );
 
-  const monthDays = MONTH.done[identity.id] || [];
+  // current month, derived live from this identity's logged sessions
+  const month = monthActivity(sessions);
+  const monthDays = month.done[identity.id] || [];
   const moments = sessions.filter((s) => s.id === identity.id);
-  // most-recent-first weeks that carry a row for this identity, capped to 4
-  const weekRows = WEEKS
-    .map((w) => ({ label: w.label.split(' – ')[0], row: w.rows.find((r) => r.id === identity.id) }))
-    .filter((w) => w.row)
-    .slice(0, 4);
+  // recent completed weeks this identity was actually tended, derived from the
+  // logged sessions and the plan in force each week. Empty until one accrues.
+  const weekRows = recentWeeksFor(sessions, identity, planHistory);
 
   const intentionFrac = identity.desired > 0 ? Math.min(100, (identity.actual / identity.desired) * 100) : 0;
-  const days = Array.from({ length: MONTH.days }, (_, i) => i + 1);
+  const days = Array.from({ length: month.days }, (_, i) => i + 1);
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 8, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
@@ -117,7 +117,7 @@ export default function IdentityDetail({
         </View>
         <Text style={{ fontFamily: serif(500), fontSize: 40, lineHeight: 44, color: t.ink, letterSpacing: -0.4 }}>{identity.name}</Text>
         <Text style={{ fontSize: 14.5, fontFamily: sans(600), color: t.inkSoft, marginTop: 6 }}>
-          {monthDays.length} {monthDays.length === 1 ? 'moment' : 'moments'} in {MONTH.name} · {presence(identity.lastActiveDays)}
+          {monthDays.length} {monthDays.length === 1 ? 'moment' : 'moments'} in {month.name} · {presence(identity.lastActiveDays)}
         </Text>
       </View>
 
@@ -138,12 +138,12 @@ export default function IdentityDetail({
       {/* this month — one dot per day, lit on days with a logged session */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 26, marginBottom: 14, paddingHorizontal: 2 }}>
         <Eyebrow>This month</Eyebrow>
-        <Eyebrow style={{ color: t.inkSoft }}>{MONTH.name}</Eyebrow>
+        <Eyebrow style={{ color: t.inkSoft }}>{month.name}</Eyebrow>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2 }}>
         {days.map((d) => {
           const on = monthDays.includes(d);
-          const isToday = d === MONTH.todayDay;
+          const isToday = d === month.todayDay;
           return (
             <View key={d} style={{ flex: 1, alignItems: 'center' }}>
               <View
@@ -166,20 +166,26 @@ export default function IdentityDetail({
 
       {/* across the weeks — plan vs lived per recent week */}
       <SectionTitle style={{ marginTop: 28, marginBottom: 14, paddingHorizontal: 2 }}>Across the weeks</SectionTitle>
-      <Card style={{ paddingHorizontal: 22, paddingVertical: 20 }}>
-        <View style={{ gap: 16 }}>
-          {weekRows.map(({ label, row }) => (
-            <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-              <Text style={{ width: 58, fontSize: 13.5, fontFamily: sans(600), color: t.inkSoft }}>{label}</Text>
-              <View style={{ flex: 1 }}>
-                <DualBar actual={row.plan > 0 ? (row.actual / row.plan) * 100 : 0} color={c.color} height={8} />
+      <Card style={{ paddingHorizontal: 22, paddingVertical: weekRows.length ? 20 : 18 }}>
+        {weekRows.length === 0 ? (
+          <Text style={{ fontSize: 14, fontFamily: sans(500), color: t.inkFaint, paddingVertical: 12, textAlign: 'center' }}>
+            No past weeks yet — once you’ve tended {identity.name} over a full week, its history will appear here.
+          </Text>
+        ) : (
+          <View style={{ gap: 16 }}>
+            {weekRows.map(({ label, plan, actual }) => (
+              <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <Text style={{ width: 58, fontSize: 13.5, fontFamily: sans(600), color: t.inkSoft }}>{label}</Text>
+                <View style={{ flex: 1 }}>
+                  <DualBar actual={plan > 0 ? (actual / plan) * 100 : 0} color={c.color} height={8} />
+                </View>
+                <Text style={{ width: 52, textAlign: 'right', fontSize: 12.5, fontFamily: sans(700), color: t.inkFaint }}>
+                  {actual}/{plan}%
+                </Text>
               </View>
-              <Text style={{ width: 52, textAlign: 'right', fontSize: 12.5, fontFamily: sans(700), color: t.inkFaint }}>
-                {row.actual}/{row.plan}%
-              </Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
       </Card>
 
       {/* recent moments — logged sessions for this identity */}
@@ -207,7 +213,7 @@ export default function IdentityDetail({
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>{m.label}</Text>
-                <Text style={{ fontSize: 13, fontFamily: sans(500), color: t.inkSoft, marginTop: 2 }}>{m.when}</Text>
+                <Text style={{ fontSize: 13, fontFamily: sans(500), color: t.inkSoft, marginTop: 2 }}>{fmtWhen(m.ts) || m.when}</Text>
               </View>
               <Text style={{ fontFamily: serif(500), fontSize: 19, color: t.ink }}>{fmtMins(m.mins)}</Text>
             </View>

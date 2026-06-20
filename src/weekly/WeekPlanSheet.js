@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useStore, useTheme } from '../store/Store';
-import { WEEKS, FREE_HOURS_WEEK, fmtMins } from '../data/data';
+import { FREE_HOURS_WEEK, fmtMins, lastWeekStartMs, weekPoints } from '../data/data';
 import { Glyph, Button, Card, Eyebrow, Pill } from '../components/primitives';
 import Icon from '../components/Icon';
 import { SPACING } from '../lib/layout';
@@ -13,9 +13,9 @@ import { serif, sans } from '../theme/fonts';
 
 export default function WeekPlanSheet() {
   const { t, colorsFor } = useTheme();
-  const { planOpen: open, week, identities, freeHours, setFreeHours, closePlan: onClose, commitWeekPlan: onCommit } = useStore();
+  const { planOpen: open, week, identities, sessions, freeHours, setFreeHours, closePlan: onClose, commitWeekPlan: onCommit } = useStore();
   const { height } = useWindowDimensions();
-  const lastWeek = WEEKS[0];
+  const lastWeekRef = lastWeekStartMs();
 
   const [plan, setPlan] = useState({});
   const [resting, setResting] = useState({}); // id -> paused for this week (excluded from the total)
@@ -51,9 +51,11 @@ export default function WeekPlanSheet() {
   const total = identities.reduce((s, i) => s + (resting[i.id] ? 0 : plan[i.id] || 0), 0);
   const balanced = total === 100;
   const set = (id, v) => setPlan((p) => ({ ...p, [id]: v }));
+  // last calendar week's lived points for this identity, from real sessions —
+  // null when nothing was logged (so we don't show "you lived 0%").
   const livedLast = (id) => {
-    const r = lastWeek && lastWeek.rows.find((x) => x.id === id);
-    return r ? r.actual : null;
+    const v = Math.min(60, weekPoints(sessions, id, lastWeekRef));
+    return v > 0 ? v : null;
   };
   const rest = (id) => setResting((r) => ({ ...r, [id]: true }));
   const bringBack = (id) => {
@@ -118,7 +120,7 @@ export default function WeekPlanSheet() {
               <Text style={{ fontFamily: serif(500), fontSize: 26, color: t.ink }}>{fmtMins(hours * 60)}</Text>
             </View>
             <Text style={{ fontSize: 12.5, color: t.inkFaint, fontFamily: sans(500), marginBottom: 8 }}>
-              The hours that are truly yours — every % below becomes real hours of this.
+              The hours that are truly yours.
             </Text>
             <Slider
               minimumValue={FREE_HOURS_WEEK.min}

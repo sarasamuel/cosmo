@@ -23,7 +23,7 @@ export default function OnbCadence({ cadence, freeHours, onSetHours, onBack, onC
 
       <Card style={{ paddingHorizontal: 26, paddingTop: 30, paddingBottom: 26 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
-          <Text style={{ fontSize: 15, fontFamily: sans(600), color: t.inkSoft }}>Free time {cfg.noun}</Text>
+          <Text style={{ flexShrink: 1, fontSize: 15, fontFamily: sans(600), color: t.inkSoft }}>Free time {cfg.noun}</Text>
           <Text style={{ fontFamily: serif(500), fontSize: 34, color: t.ink }}>{fmtDur(freeHours)}</Text>
         </View>
         <Text style={{ fontSize: 13.5, color: t.inkFaint, fontFamily: sans(500), marginBottom: 22, lineHeight: 19 }}>
