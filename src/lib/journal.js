@@ -125,12 +125,19 @@ export function autoMilestones(identities, sessions, opts = {}) {
 }
 
 /* The merged feed, newest-first: user entries + auto-milestones + Cosmo's weekly
-   note. Each row carries a `kind`: 'note' | 'milestone' | 'auto' | 'cosmo'. */
-export function buildFeed({ entries, autoMs, coachNote, now }) {
+   note + any occasional rebalancing observations. Each row carries a `kind`:
+   'note' | 'milestone' | 'auto' | 'cosmo'. `insights` are surfaced as gentle
+   "Cosmo" rows WITHOUT a call-to-action (the actionable nudge lives on Home), so
+   a light-engagement feed (few or no written notes) still carries something. */
+export function buildFeed({ entries, autoMs, coachNote, insights, now }) {
   const t = now || Date.now();
   const user = (entries || []).map((e) => ({ ...e, kind: e.type === 'milestone' ? 'milestone' : 'note' }));
   const auto = (autoMs || []).map((m) => ({ ...m, kind: 'auto' }));
-  const cosmo = coachNote ? [{ kind: 'cosmo', ts: t - 100, text: coachNote }] : [];
+  const cosmo = [];
+  if (coachNote) cosmo.push({ kind: 'cosmo', ts: t - 100, text: coachNote });
+  (insights || []).forEach((ins, i) => {
+    cosmo.push({ kind: 'cosmo', identityId: ins.id, ts: t - 200 - i, text: ins.body ? `${ins.title}. ${ins.body}` : ins.title });
+  });
   return [...user, ...auto, ...cosmo].sort((a, b) => (b.ts || 0) - (a.ts || 0));
 }
 

@@ -80,4 +80,17 @@ describe('journalState + buildFeed', () => {
     expect(feed[0].ts).toBeGreaterThanOrEqual(feed[feed.length - 1].ts);
     expect(feed.map((r) => r.kind)).toEqual(expect.arrayContaining(['note', 'auto', 'cosmo']));
   });
+
+  test('buildFeed surfaces insights as cosmo rows (no CTA), tagged to their identity', () => {
+    const feed = buildFeed({
+      entries: [],
+      autoMs: [],
+      insights: [{ kind: 'balance', id: 'eng', title: 'Engineer is carrying the week', body: 'It’s 8 points above your intention.' }],
+      now: 1000000,
+    });
+    const row = feed.find((r) => r.kind === 'cosmo' && r.identityId === 'eng');
+    expect(row).toBeTruthy();
+    expect(row.text).toContain('Engineer is carrying the week');
+    expect(row.action).toBeUndefined(); // no call-to-action in the feed
+  });
 });

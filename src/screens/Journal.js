@@ -9,7 +9,7 @@ import { Glyph, Eyebrow, Button } from '../components/primitives';
 import Icon from '../components/Icon';
 import { useScreenPad } from '../lib/layout';
 import { fmtWhen } from '../data/data';
-import { coachNote } from '../lib/coach';
+import { coachNote, buildInsights } from '../lib/coach';
 import { autoMilestones, buildFeed, resurface, journalState } from '../lib/journal';
 import { serif, sans } from '../theme/fonts';
 
@@ -114,10 +114,13 @@ export default function Journal() {
   const state = journalState(journal, autoMs);
   const coach = useMemo(() => coachNote(identities, []), [identities]);
   const look = useMemo(() => resurface(journal, sessions), [journal, sessions]);
+  // one occasional observation (not the toward-intention nudge — that's on Home)
+  // so a sparse feed still carries a "Cosmo noticed" moment beyond the milestones.
+  const insights = useMemo(() => buildInsights(identities).filter((i) => i.kind !== 'nudge').slice(0, 1), [identities]);
 
   const feed = useMemo(
-    () => buildFeed({ entries: journal, autoMs, coachNote: coach && coach.note, now: Date.now() }),
-    [journal, autoMs, coach],
+    () => buildFeed({ entries: journal, autoMs, coachNote: coach && coach.note, insights, now: Date.now() }),
+    [journal, autoMs, coach, insights],
   );
   const shown = filter === 'all' ? feed : feed.filter((r) => r.identityId === filter);
 
