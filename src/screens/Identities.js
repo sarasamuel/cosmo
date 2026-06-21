@@ -2,53 +2,17 @@
    button (allocation is set weekly via the plan sheet, not fixed forever).
    Ported from Identities in screens2.jsx. */
 import React from 'react';
-import { ScrollView, View, Text, Pressable, Switch, Alert } from 'react-native';
+import { ScrollView, View, Text, Pressable } from 'react-native';
 import { useStore, useTheme } from '../store/Store';
 import { Card, Glyph, Eyebrow, SectionTitle, Button, Pill } from '../components/primitives';
 import Icon from '../components/Icon';
 import DualBar from '../components/DualBar';
 import { useScreenPad } from '../lib/layout';
-import { fmtAgo } from '../data/data';
 import { serif, sans } from '../theme/fonts';
-
-// 12-hour clock label from 24-hour parts, e.g. (18, 0) -> "6:00 PM".
-const fmtTime = (h, m) => {
-  const hr = h % 12 === 0 ? 12 : h % 12;
-  return `${hr}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
-};
-const TIME_PRESETS = [
-  { h: 20, m: 0 },
-  { h: 21, m: 0 },
-  { h: 22, m: 0 }
-];
 
 export default function Identities() {
   const { t, colorsFor } = useTheme();
-  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, restart, theme, setTheme, reminder, setReminderEnabled, setReminderTime, session, syncStatus, lastSyncedAt, openBackup, signOut, exportData, deleteAccount } = useStore();
-
-  const onExport = async () => {
-    const res = await exportData();
-    if (!res.ok && res.error) Alert.alert('Couldn’t export', res.error);
-  };
-  const onDelete = () => {
-    Alert.alert(
-      'Delete account & data?',
-      session
-        ? 'This permanently deletes your cloud account and erases all Cosmo data on this device. This cannot be undone.'
-        : 'This erases all Cosmo data on this device. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const res = await deleteAccount();
-            if (!res.ok) Alert.alert('Couldn’t delete', res.error || 'Please try again.');
-          },
-        },
-      ],
-    );
-  };
+  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, openSettings } = useStore();
   const total = identities.reduce((s, i) => s + i.desired, 0);
   const maxPlan = Math.max(...identities.map((i) => i.desired), 1);
   const pad = useScreenPad();
@@ -56,7 +20,17 @@ export default function Identities() {
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
       <View style={{ paddingTop: 8 }}>
-        <Eyebrow>Your identities</Eyebrow>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Eyebrow>Your identities</Eyebrow>
+          <Pressable
+            onPress={openSettings}
+            hitSlop={10}
+            accessibilityLabel="Settings"
+            style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2, borderWidth: 1, borderColor: t.line, opacity: pressed ? 0.6 : 1 })}
+          >
+            <Icon name="gear" size={20} stroke={1.9} color={t.inkSoft} />
+          </Pressable>
+        </View>
         <Text style={{ fontFamily: serif(500), fontSize: 34, color: t.ink, marginTop: 8, marginBottom: 4 }}>The person you’re becoming</Text>
         <Text style={{ fontSize: 15.5, color: t.inkSoft, lineHeight: 23 }}>
           You don't fix one balance forever. Each week, you choose anew how much of yourself each identity deserves.
@@ -115,153 +89,6 @@ export default function Identities() {
       <Button variant="soft" onPress={openAdd} style={{ marginTop: 24 }}>
         <Icon name="plus" size={20} color={t.ink} />
         <Text style={{ marginLeft: 10, fontSize: 18, fontFamily: sans(600), color: t.ink }}>Add an identity</Text>
-      </Button>
-
-      {/* appearance */}
-      <SectionTitle style={{ marginTop: 28, marginBottom: 12 }}>Appearance</SectionTitle>
-      <Card style={{ padding: 18, flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-        <View
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 19,
-            backgroundColor: theme === 'dark' ? t.id.writer.color : t.id.painter.color,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon name={theme === 'dark' ? 'moon' : 'sun'} size={18} stroke={2} color="#fff" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>Theme</Text>
-          <Text style={{ fontSize: 13, color: t.inkSoft, fontFamily: sans(600) }}>{theme === 'dark' ? 'Deep space' : 'Celestial dawn'}</Text>
-        </View>
-        <View style={{ flexDirection: 'row', backgroundColor: t.surface2, borderWidth: 1, borderColor: t.line, borderRadius: 999, padding: 5 }}>
-          {[
-            { v: 'light', icon: 'sun', label: 'Light' },
-            { v: 'dark', icon: 'moon', label: 'Dark' },
-          ].map((o) => {
-            const on = theme === o.v;
-            return (
-              <Pressable
-                key={o.v}
-                onPress={() => setTheme(o.v)}
-                style={[
-                  { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 999, backgroundColor: on ? t.surface : 'transparent' },
-                  on ? t.shadow.sm : null,
-                ]}
-              >
-                <Icon name={o.icon} size={15} stroke={2} color={on ? t.ink : t.inkSoft} />
-                <Text style={{ fontSize: 15, fontFamily: sans(600), color: on ? t.ink : t.inkSoft }}>{o.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Card>
-
-
-      {/* nightly reminder — a local notification at a fixed time each day */}
-      <Card style={{ marginTop: 12, padding: 18 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-          <View
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
-              backgroundColor: reminder.enabled ? t.id.relax.color : t.surface2,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Icon name="bell" size={18} stroke={2} color={reminder.enabled ? '#fff' : t.inkSoft} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>Nightly reminder</Text>
-            <Text style={{ fontSize: 13, color: t.inkSoft, fontFamily: sans(600) }}>
-              {'A nudge to reflect on your day and log missed sessions'}
-            </Text>
-          </View>
-          <Switch
-            value={reminder.enabled}
-            onValueChange={setReminderEnabled}
-            trackColor={{ false: t.surface3, true: t.id.relax.color }}
-            thumbColor="#fff"
-          />
-        </View>
-
-        {reminder.enabled && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: t.line2 }}>
-            {TIME_PRESETS.map((p) => {
-              const on = reminder.hour === p.h && reminder.minute === p.m;
-              return (
-                <Pressable
-                  key={`${p.h}:${p.m}`}
-                  onPress={() => setReminderTime(p.h, p.m)}
-                  style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 9,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: on ? 'transparent' : t.line,
-                    backgroundColor: on ? t.ink : t.surface2,
-                  }}
-                >
-                  <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: on ? t.bg : t.inkSoft }}>{fmtTime(p.h, p.m)}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-      </Card>
-
-      {/* cloud backup — passwordless email-code sign-in (local-first; opt-in) */}
-      {(() => {
-        // live sync state → status line + dot color (no signal before; this is #10)
-        const failed = session && syncStatus === 'error';
-        const syncing = session && syncStatus === 'syncing';
-        const dotBg = !session ? t.surface2 : failed ? t.warn : t.good;
-        const statusText = !session
-          ? 'Save your progress to a new phone'
-          : failed
-          ? 'Backup failed — will retry'
-          : syncing
-          ? 'Syncing…'
-          : `Backed up${lastSyncedAt ? ` · ${fmtAgo(lastSyncedAt)}` : ''}`;
-        return (
-      <Card style={{ marginTop: 12, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-        <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: dotBg, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name={!session ? 'sparkle' : failed ? 'clock' : 'check'} size={18} stroke={2.4} color={session ? '#fff' : t.inkSoft} />
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>Cloud backup</Text>
-          <Text numberOfLines={1} style={{ fontSize: 13, color: failed ? t.warn : t.inkSoft, fontFamily: sans(600) }}>
-            {statusText}{session && !failed && !syncing && session.user?.email ? ` · ${session.user.email}` : ''}
-          </Text>
-        </View>
-        {session ? (
-          <Pill bg={t.surface2} onPress={signOut} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
-            <Text style={{ color: t.inkSoft, fontFamily: sans(700), fontSize: 13 }}>Sign out</Text>
-          </Pill>
-        ) : (
-          <Pill bg={t.ink} onPress={openBackup} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
-            <Text style={{ color: t.bg, fontFamily: sans(700), fontSize: 13 }}>Back up</Text>
-          </Pill>
-        )}
-      </Card>
-        );
-      })()}
-
-      {/* data & privacy — export everything, or delete account + wipe device */}
-      <Pressable onPress={onExport} style={({ pressed }) => ({ marginTop: 16, paddingVertical: 10, alignItems: 'center', opacity: pressed ? 0.6 : 1 })}>
-        <Text style={{ fontSize: 15, fontFamily: sans(600), color: t.inkSoft }}>Export my data</Text>
-      </Pressable>
-      <Pressable onPress={onDelete} style={({ pressed }) => ({ paddingVertical: 10, alignItems: 'center', opacity: pressed ? 0.6 : 1 })}>
-        <Text style={{ fontSize: 15, fontFamily: sans(700), color: t.warn }}>Delete account &amp; data</Text>
-      </Pressable>
-
-      <Button variant="ghost" onPress={restart} style={{ marginTop: 10 }}>
-        <Icon name="sparkle" size={18} color={t.inkSoft} />
-        <Text style={{ marginLeft: 10, fontSize: 18, fontFamily: sans(600), color: t.inkSoft }}>Replay the intro</Text>
       </Button>
     </ScrollView>
   );

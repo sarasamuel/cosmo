@@ -145,8 +145,9 @@ export default function ConstellationViz({
 
   const n = identities.length;
   // a sparse constellation looks like tiny dots — scale stars up when there are
-  // few, smoothly easing back to 1× by ~5 stars (never shrinks a busy sky).
-  const starK = Math.min(1.5, Math.max(1, 1 + (5 - n) * 0.12));
+  // few, easing toward the floor by ~5 stars. The floor (1.18×) keeps even a busy
+  // sky comfortably visible rather than a field of pinpricks.
+  const starK = Math.min(1.65, Math.max(1.18, 1 + (5 - n) * 0.13));
 
   // Static layout (per-star params, positions, MST edges, height, starfield)
   // depends only on the identity count — compute it once per count, NOT every
@@ -279,9 +280,9 @@ export default function ConstellationViz({
                 x2={nb.sx}
                 y2={nb.sy}
                 stroke={t.cstInk}
-                strokeWidth="1"
+                strokeWidth="1.3"
                 strokeLinecap="round"
-                strokeOpacity={selectedId ? 0.1 : 0.24}
+                strokeOpacity={selectedId ? 0.14 : 0.34}
               />
             );
           })}
@@ -292,25 +293,26 @@ export default function ConstellationViz({
             const isSel = idn.id === selectedId;
             const dim = selectedId && !isSel;
             const fill = fillOf(idn);
-            const coreR = (3 + Math.sqrt(idn.actual) * 1.7) * pulse * (isSel ? 1.22 : 1) * starK;
+            const coreR = (4.4 + Math.sqrt(idn.actual) * 1.7) * pulse * (isSel ? 1.22 : 1) * starK;
             const gap = (9 + idn.desired * 0.5 - (3 + Math.sqrt(idn.actual) * 1.7)) * starK;
             const haloR = coreR + gap;
-            const bright = (0.42 + 0.58 * fill) * (0.85 + 0.15 * pulse);
+            // brighter floor so an unlived star still reads clearly; lived stars glow more
+            const bright = (0.56 + 0.44 * fill) * (0.85 + 0.15 * pulse);
             const glint = coreR + 6 * starK;
             return (
               <G key={idn.id} opacity={isSel ? 1 : dim ? 0.34 : 1} onPress={interactive ? () => focusNode(idn) : undefined}>
                 {/* intention halo */}
-                <Circle cx={sx} cy={sy} r={haloR} fill="none" stroke={c.color} strokeWidth={isSel ? 2.4 : 1.8} strokeOpacity={isSel ? 0.85 : 0.7} strokeDasharray="3 3.5" />
+                <Circle cx={sx} cy={sy} r={haloR} fill="none" stroke={c.color} strokeWidth={isSel ? 2.6 : 2} strokeOpacity={isSel ? 0.9 : 0.82} strokeDasharray="3 3.5" />
                 {/* soft glow */}
-                <Circle cx={sx} cy={sy} r={glint} fill={c.color} opacity={0.22 * bright} />
+                <Circle cx={sx} cy={sy} r={glint} fill={c.color} opacity={0.3 * bright} />
                 {/* sparkle glints */}
-                <G stroke={c.color} strokeWidth="1.1" strokeLinecap="round" opacity={0.5 * bright}>
+                <G stroke={c.color} strokeWidth="1.2" strokeLinecap="round" opacity={0.62 * bright}>
                   <Line x1={sx - glint} y1={sy} x2={sx + glint} y2={sy} />
                   <Line x1={sx} y1={sy - glint} x2={sx} y2={sy + glint} />
                 </G>
                 {/* the lived star */}
                 <Circle cx={sx} cy={sy} r={coreR} fill={c.color} opacity={bright} />
-                <Circle cx={sx} cy={sy} r={coreR} fill="#fff" opacity={0.2 * fill} />
+                <Circle cx={sx} cy={sy} r={coreR} fill="#fff" opacity={0.28 * fill} />
                 {/* labels */}
                 {showLabels && (
                   <>

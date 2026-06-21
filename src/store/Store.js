@@ -57,6 +57,7 @@ export function StoreProvider({ children }) {
   const [addOpen, setAddOpen] = useState(false);
   const [cosmosFocus, setCosmosFocus] = useState(null); // focused identity in the cosmos card
   const [detail, setDetail] = useState(null); // identity whose full Detail screen is open (null = none)
+  const [settingsOpen, setSettingsOpen] = useState(false); // Settings screen (pushed from the You-tab gear)
   const [review, setReview] = useState(false); // end-of-day review screen open (from the reminder tap)
   const [celebrate, setCelebrate] = useState(null); // identity that just reached its intention (celebration overlay)
   const [allMetOpen, setAllMetOpen] = useState(false); // whole-week "every intention met" celebration
@@ -653,6 +654,9 @@ export function StoreProvider({ children }) {
   }, []);
   const closeDetail = useCallback(() => setDetail(null), []);
 
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+
   // Add one or more identities by name (from the catalog or typed by the user).
   // Each gets the next palette hue far enough from every hue already in use, so
   // colors stay distinct. Names already present (case-insensitive) are skipped.
@@ -741,6 +745,9 @@ export function StoreProvider({ children }) {
       detail,
       openDetail,
       closeDetail,
+      settingsOpen,
+      openSettings,
+      closeSettings,
       review,
       openReview,
       closeReview,
@@ -782,7 +789,7 @@ export function StoreProvider({ children }) {
       liveRelax, sessions, planHistory, align, week, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
-      focusCosmos, clearCosmos, detail, openDetail, closeDetail, review, openReview, closeReview, commitReview,
+      focusCosmos, clearCosmos, detail, openDetail, closeDetail, settingsOpen, openSettings, closeSettings, review, openReview, closeReview, commitReview,
       celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, freeHours, setFreeHours, setRelaxAllowance,
       session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, exportData, deleteAccount, userName, setUserName, authSeen, markAuthSeen,
       setDesired, seedOnboarding, enter, restart, toast,
