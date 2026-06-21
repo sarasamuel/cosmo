@@ -12,7 +12,7 @@
    Each step takes the data at version N-1 and returns it at version N. Keep
    steps pure and defensive (inputs may be partial/corrupt). */
 
-export const DATA_VERSION = 2;
+export const DATA_VERSION = 3;
 
 // Deterministic id for a legacy session from its content, so the SAME session
 // gets the SAME sid on every device — letting the cross-device merge dedupe it
@@ -43,6 +43,9 @@ const MIGRATIONS = {
     if (!Array.isArray(d.sessions)) return d;
     return { ...d, sessions: d.sessions.map((s) => (s && s.sid == null ? { ...s, sid: sidFor(s) } : s)) };
   },
+  // v2 → v3: the journal layer (user notes + milestones) arrives — ensure the
+  // array exists so the feed reads cleanly on older blobs.
+  3: (d) => (Array.isArray(d.journal) ? d : { ...d, journal: [] }),
 };
 
 // Version stamped on the data, defaulting to 0 for legacy/pre-versioning blobs.

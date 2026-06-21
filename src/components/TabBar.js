@@ -1,4 +1,4 @@
-/* Bottom tab bar: Portfolio / Insights / [+] / Reflect / You.
+/* Bottom tab bar: Portfolio / Journal / [+] / Reflect / You.
    The center "+" is a floating log button. Ported from TabBar in components.jsx. */
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
@@ -8,7 +8,7 @@ import { sans } from '../theme/fonts';
 
 const LEFT = [
   { id: 'home', label: 'Portfolio', icon: 'portfolio' },
-  { id: 'insights', label: 'Insights', icon: 'insights' },
+  { id: 'journal', label: 'Journal', icon: 'book' },
 ];
 const RIGHT = [
   { id: 'reflect', label: 'Reflect', icon: 'reflect' },

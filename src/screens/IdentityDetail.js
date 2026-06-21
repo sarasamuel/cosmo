@@ -67,7 +67,8 @@ export default function IdentityDetail({
   onRetire,
 }) {
   const { t, colorsFor } = useTheme();
-  const { identities, sessions, planHistory, retireIdentity, form } = useStore();
+  const { identities, sessions, planHistory, journal, openLog, retireIdentity, form } = useStore();
+  const fieldNotes = (journal || []).filter((e) => e.identityId === identity.id);
   const pad = useScreenPad();
 
   // Resolve the live identity from the store (by id) so the screen reflects
@@ -216,6 +217,42 @@ export default function IdentityDetail({
                 <Text style={{ fontSize: 13, fontFamily: sans(500), color: t.inkSoft, marginTop: 2 }}>{fmtWhen(m.ts) || m.when}</Text>
               </View>
               <Text style={{ fontFamily: serif(500), fontSize: 19, color: t.ink }}>{fmtMins(m.mins)}</Text>
+            </View>
+          ))
+        )}
+      </Card>
+
+      {/* field notes — this identity's journal entries (same store as the Journal tab) */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: 14, paddingHorizontal: 2 }}>
+        <SectionTitle>Field notes</SectionTitle>
+        <Pressable onPress={() => openLog(identity)} hitSlop={8} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: pressed ? 0.6 : 1 })}>
+          <Icon name="plus" size={15} stroke={2.4} color={c.color} />
+          <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: c.color }}>Note</Text>
+        </Pressable>
+      </View>
+      <Card style={{ paddingHorizontal: 22, paddingVertical: fieldNotes.length ? 6 : 18 }}>
+        {fieldNotes.length === 0 ? (
+          <Text style={{ fontSize: 14, fontFamily: sans(500), color: t.inkFaint, paddingVertical: 12, textAlign: 'center' }}>
+            No notes yet — add a line next time you log {identity.name}.
+          </Text>
+        ) : (
+          fieldNotes.map((e, k) => (
+            <View key={e.id} style={{ flexDirection: 'row', gap: 12, paddingVertical: 14, borderBottomWidth: k === fieldNotes.length - 1 ? 0 : 1, borderBottomColor: t.line2 }}>
+              <View style={{ width: 22, alignItems: 'center', paddingTop: 3 }}>
+                {e.type === 'milestone' ? (
+                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#f6bf5c', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="star" size={11} color="#1c1708" />
+                  </View>
+                ) : (
+                  <View style={{ width: 9, height: 9, borderRadius: 5, marginTop: 4, backgroundColor: c.color }} />
+                )}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontFamily: serif(400), fontSize: 16, lineHeight: 23, color: t.ink }}>{e.text}</Text>
+                <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: t.inkFaint, marginTop: 3 }}>
+                  {e.type === 'milestone' ? 'Milestone · ' : ''}{fmtWhen(e.ts)}
+                </Text>
+              </View>
             </View>
           ))
         )}

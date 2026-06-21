@@ -65,6 +65,24 @@ describe('StoreProvider', () => {
     expect(after).toBeGreaterThan(before); // ~12min = 1pt, derived live from sessions
   });
 
+  test('logging with a note creates a journal entry (milestone when marked)', async () => {
+    const { result } = await mountStore();
+    const target = result.current.logTargets[0];
+    act(() => { result.current.commitLog(target, 30, 'words came easier', { silent: true, milestone: true }); });
+    const entry = result.current.journal[0];
+    expect(entry.text).toBe('words came easier');
+    expect(entry.type).toBe('milestone');
+    expect(entry.identityId).toBe(target.id);
+    expect(entry.sessionId).toBe(result.current.sessions[0].sid); // linked to the session
+  });
+
+  test('logging without a note creates no journal entry', async () => {
+    const { result } = await mountStore();
+    const before = result.current.journal.length;
+    act(() => { result.current.commitLog(result.current.logTargets[0], 30, '', { silent: true }); });
+    expect(result.current.journal.length).toBe(before);
+  });
+
   test('seedOnboarding installs the chosen identities and clears demo sessions', async () => {
     const { result } = await mountStore();
     act(() => {

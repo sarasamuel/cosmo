@@ -33,6 +33,7 @@ const KEY_NAME = 'cosmo-name'; // display name (captured at sign-in)
 const KEY_AUTHSEEN = 'cosmo-authseen'; // the auth-entry flow was completed or skipped (don't show it again)
 const KEY_SYNCED = 'cosmo-synced'; // ms of the last successful cloud push/pull (for the "backed up · …" label)
 const KEY_SYNCEDSTAMP = 'cosmo-syncedstamp'; // local version (stamp) last confirmed in the cloud — drives dirty-tracking + retry
+const KEY_JOINED = 'cosmo-joined'; // ms of first launch (for journal anniversaries)
 
 const DEFAULT_REMINDER = { enabled: false, hour: 9, minute: 0 };
 
@@ -48,6 +49,8 @@ export function StoreProvider({ children }) {
   const [relax, setRelax] = useState(RELAX);
   const [sessions, setSessions] = useState(SESSIONS);
   const [planHistory, setPlanHistory] = useState({}); // { weekStartMs: { identityId: pct } } — committed plans, kept for real weekly history
+  const [journal, setJournal] = useState([]); // user-authored journal entries (notes + milestones); auto-milestones are DERIVED, not stored
+  const [joinedAt, setJoinedAt] = useState(0); // ms the user first opened the app (for anniversaries)
 
   const [logOpen, setLogOpen] = useState(false);
   const [logPreset, setLogPreset] = useState(null);
@@ -107,6 +110,7 @@ export function StoreProvider({ children }) {
       if (Number.isFinite(stampNum)) stampRef.current = stampNum;
       { const sy = Number(await storage.getItem(KEY_SYNCED)); if (Number.isFinite(sy) && sy) setLastSyncedAt(sy); }
       { const ss = Number(await storage.getItem(KEY_SYNCEDSTAMP)); if (Number.isFinite(ss)) syncedStampRef.current = ss; }
+      { const jn = Number(await storage.getItem(KEY_JOINED)); if (Number.isFinite(jn) && jn) { setJoinedAt(jn); } else { const t0 = Date.now(); setJoinedAt(t0); storage.setItem(KEY_JOINED, String(t0)); } }
       const fhNum = Number(fh);
       if (fh != null && Number.isFinite(fhNum)) {
         setFreeHoursState(Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, fhNum)));
@@ -135,6 +139,7 @@ export function StoreProvider({ children }) {
           if (data?.relax) setRelax(data.relax);
           if (Array.isArray(data?.sessions)) setSessions(data.sessions);
           if (data?.planHistory && typeof data.planHistory === 'object') setPlanHistory(data.planHistory);
+          if (Array.isArray(data?.journal)) setJournal(data.journal);
         } catch (e) {
           // corrupt blob: keep seed defaults, but don't swallow it silently
           // eslint-disable-next-line no-console
@@ -236,8 +241,8 @@ export function StoreProvider({ children }) {
   // completes. Written as one atomic blob (no partial/half-saved states).
   useEffect(() => {
     if (!hydrated) return;
-    storage.setItem(KEY_DATA, JSON.stringify({ v: DATA_VERSION, identities, retired, relax, sessions, planHistory }));
-  }, [hydrated, identities, retired, relax, sessions, planHistory]);
+    storage.setItem(KEY_DATA, JSON.stringify({ v: DATA_VERSION, identities, retired, relax, sessions, planHistory, journal }));
+  }, [hydrated, identities, retired, relax, sessions, planHistory, journal]);
 
   // ===== Cloud sync (document backup) ====================================
   // The whole domain snapshot is one JSON row in profiles.state, last-write-wins
@@ -248,7 +253,7 @@ export function StoreProvider({ children }) {
   const buildSnapshot = () => ({
     v: DATA_VERSION,
     updatedAt: stampRef.current,
-    identities, retired, relax, sessions, planHistory,
+    identities, retired, relax, sessions, planHistory, journal, joinedAt,
     theme, form, freeHours, reminder, weekPlanned, started, allMetWeek, userName,
   });
   // keep a ref to the latest snapshot builder so export reads current state
@@ -270,6 +275,15 @@ export function StoreProvider({ children }) {
     if (Array.isArray(snap.sessions)) setSessions((local) => mergeSessions(local, snap.sessions));
     // plan history: union the weeks both sides know about (remote wins a same-week conflict)
     if (snap.planHistory && typeof snap.planHistory === 'object') setPlanHistory((local) => ({ ...local, ...snap.planHistory }));
+    // journal is append-only → union by entry id (never lose a note across devices)
+    if (Array.isArray(snap.journal)) setJournal((local) => {
+      const seen = new Set(); const out = [];
+      [...(local || []), ...snap.journal].forEach((e) => { if (e && e.id && !seen.has(e.id)) { seen.add(e.id); out.push(e); } });
+      return out.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    });
+    if (typeof snap.joinedAt === 'number' && snap.joinedAt) {
+      setJoinedAt((local) => { const v = local ? Math.min(local, snap.joinedAt) : snap.joinedAt; storage.setItem(KEY_JOINED, String(v)); return v; });
+    }
     if (snap.theme === 'light' || snap.theme === 'dark') { setThemeName(snap.theme); storage.setItem(KEY_THEME, snap.theme); }
     if (snap.form === 'orbit' || snap.form === 'constellation') { setFormState(snap.form); storage.setItem(KEY_FORM, snap.form); }
     if (typeof snap.freeHours === 'number') { setFreeHoursState(snap.freeHours); storage.setItem(KEY_FREEHOURS, String(snap.freeHours)); }
@@ -339,7 +353,7 @@ export function StoreProvider({ children }) {
     pendingRef.current = buildSnapshot();
     if (sessionRef.current && sessionRef.current.user) schedulePush();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, identities, retired, relax, sessions, planHistory, theme, form, freeHours, reminder, weekPlanned, started, allMetWeek, userName]);
+  }, [hydrated, identities, retired, relax, sessions, planHistory, journal, joinedAt, theme, form, freeHours, reminder, weekPlanned, started, allMetWeek, userName]);
 
   // on sign-in (and on launch if already signed in): pull, then restore-or-back-up.
   useEffect(() => {
@@ -565,7 +579,15 @@ export function StoreProvider({ children }) {
     // projected list (only `actual` matters for the all-met check)
     const nextIdentities = liveIdentities.map((i) => (i.id === idn.id ? { ...i, actual: newActual } : i));
 
-    setSessions((s) => { const ts = Date.now(); return [{ id: idn.id, sid: newSessionId(), label: title || idn.name + ' session', mins, ts, when: fmtWhen(ts) }, ...s]; });
+    const sid = newSessionId();
+    const ts = Date.now();
+    setSessions((s) => [{ id: idn.id, sid, label: title || idn.name + ' session', mins, ts, when: fmtWhen(ts) }, ...s]);
+    // a typed note becomes a journal entry tied to this session (a milestone if
+    // the user marked it). Empty note → no entry. We never interpret the text.
+    if (title) {
+      const isMile = !!(opts && opts.milestone);
+      setJournal((j) => [{ id: newSessionId(), identityId: idn.id, type: isMile ? 'milestone' : 'note', text: title, ts, sessionId: sid }, ...j]);
+    }
     setLogOpen(false);
     // if this log completes the week, let the reactive all-met effect own the
     // moment (whole-week triumph > single-identity crossing > plain toast) — skip
@@ -577,6 +599,15 @@ export function StoreProvider({ children }) {
   }, [liveIdentities, relax, sessions, showToast, allMetFired]);
 
   const clearCelebrate = useCallback(() => setCelebrate(null), []);
+
+  // Standalone journal entry (from the Journal tab / Identity Detail composer).
+  // type 'note' | 'milestone'. Empty text is ignored. We never read the text.
+  const addJournalEntry = useCallback(({ identityId, type, text, sessionId }) => {
+    const body = (text || '').trim();
+    if (!body) return;
+    setJournal((j) => [{ id: newSessionId(), identityId, type: type === 'milestone' ? 'milestone' : 'note', text: body, ts: Date.now(), sessionId: sessionId || null }, ...j]);
+  }, []);
+  const removeJournalEntry = useCallback((id) => setJournal((j) => j.filter((e) => e.id !== id)), []);
 
   // Retire an identity: pull it from the active set (lists, visualizations, log
   // targets, alignment) but keep it in `retired` so its past sessions still
@@ -722,6 +753,10 @@ export function StoreProvider({ children }) {
       relax: liveRelax,
       sessions,
       planHistory,
+      journal,
+      joinedAt,
+      addJournalEntry,
+      removeJournalEntry,
       align,
       week,
       logTargets,
@@ -786,7 +821,7 @@ export function StoreProvider({ children }) {
     }),
     [
       theme, themeObj, setTheme, started, hydrated, tab, goTo, form, setForm, liveIdentities, retired, retireIdentity,
-      liveRelax, sessions, planHistory, align, week, logTargets, logOpen, logPreset, openLog, closeLog,
+      liveRelax, sessions, planHistory, journal, joinedAt, addJournalEntry, removeJournalEntry, align, week, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
       focusCosmos, clearCosmos, detail, openDetail, closeDetail, settingsOpen, openSettings, closeSettings, review, openReview, closeReview, commitReview,

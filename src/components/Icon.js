@@ -56,6 +56,14 @@ const PATHS = {
       <Path d="M10 11.5h4" />
     </>
   ),
+  book: (
+    <>
+      <Path d="M6 4.2h9a2 2 0 0 1 2 2v13.6H8a2 2 0 0 1-2-2z" />
+      <Path d="M17 16.2H8a2 2 0 0 0-2 2" />
+      <Path d="M9.4 8.4h5M9.4 11.4h5" />
+    </>
+  ),
+  star: <Path d="M12 3l1.9 5.2L19 10l-5.1 1.8L12 17l-1.9-5.2L5 10l5.1-1.8z" fill="currentColor" stroke="none" />,
   gear: (
     <>
       <Circle cx="12" cy="12" r="3.2" />

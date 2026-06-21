@@ -122,13 +122,16 @@ export default function Dashboard() {
   const pad = useScreenPad();
 
   const hasIdentities = identities.length > 0;
-  // nothing lived yet this week → don't claim hours are "leaning" anywhere; show
-  // an inviting prompt instead (the lead/lag ranking is meaningless at all-zero).
-  const livedAny = identities.some((i) => i.actual > 0) || (relax.tracked && relax.actual > 0);
-  // undefined when every identity has been retired — guard all reads below
-  const lead = hasIdentities ? [...identities].sort((a, b) => b.actual - b.desired - (a.actual - a.desired))[0] : null;
-  const lag = hasIdentities ? [...identities].sort((a, b) => a.actual - a.desired - (b.actual - b.desired))[0] : null;
-  const single = lead && lag && lead.id === lag.id; // only one identity → no lead/lag contrast
+  // The balance line describes how lived hours fall across the identities you
+  // actually PLANNED this week (desired > 0) — never a resting/paused one. `lead`
+  // (leaning toward) is the most-LIVED identity, so it always has real hours;
+  // `lag` (least of you) is the least-lived. Tie-broken oppositely so a tie still
+  // reads as a single steady focus rather than "leaning toward X while X lags".
+  const planned = identities.filter((i) => i.desired > 0);
+  const livedPlanned = planned.some((i) => i.actual > 0);
+  const lead = planned.length ? [...planned].sort((a, b) => b.actual - a.actual || b.desired - a.desired)[0] : null;
+  const lag = planned.length ? [...planned].sort((a, b) => a.actual - b.actual || a.desired - b.desired)[0] : null;
+  const single = planned.length <= 1 || (lead && lag && lead.id === lag.id);
 
   // gentle "vs last week" for the lagging identity. Three honest states: it has
   // no history (brand new), it was behind last week too, or it kept pace. Last
@@ -176,9 +179,9 @@ export default function Dashboard() {
       {hasIdentities ? (
         <Card style={{ marginTop: 18, padding: 24 }}>
           <SectionTitle style={{ marginBottom: 10 }}>This week’s balance</SectionTitle>
-          {!livedAny ? (
+          {!livedPlanned ? (
             <Text style={{ fontSize: 16.5, lineHeight: 25, color: t.ink }}>
-              A fresh week. You haven’t logged any time yet — tap a star to tend to an identity, and your balance will take shape here.
+              A fresh week. You haven’t logged time toward an intention yet — tap a star to tend to an identity, and your balance will take shape here.
             </Text>
           ) : single ? (
             <Text style={{ fontSize: 16.5, lineHeight: 25, color: t.ink }}>
@@ -190,7 +193,7 @@ export default function Dashboard() {
               <Text style={{ fontFamily: sans(700), color: colorsFor(lag).color }}>{lag.name}</Text> has had the least of you.
             </Text>
           )}
-          {!single && livedAny && (
+          {!single && livedPlanned && (
             <Text style={{ fontSize: 13.5, lineHeight: 20, color: t.inkSoft, fontFamily: sans(500), marginTop: 10 }}>
               {lagWeekNote}
             </Text>

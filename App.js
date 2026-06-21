@@ -24,7 +24,7 @@ import Toast from './src/components/Toast';
 import SplashScreen from './src/components/SplashScreen';
 
 import Dashboard from './src/screens/Dashboard';
-import Insights from './src/screens/Insights';
+import Journal from './src/screens/Journal';
 import Reflect from './src/screens/Reflect';
 import Identities from './src/screens/Identities';
 import IdentityDetail from './src/screens/IdentityDetail';
@@ -57,7 +57,7 @@ function AppShell() {
           ) : (
             <>
               {tab === 'home' && <Dashboard />}
-              {tab === 'insights' && <Insights />}
+              {tab === 'journal' && <Journal />}
               {tab === 'reflect' && <Reflect />}
               {tab === 'identities' && <Identities />}
             </>

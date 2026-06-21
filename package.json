@@ -45,8 +45,10 @@
         "displayName": "node",
         "testEnvironment": "node",
         "testMatch": [
-          "<rootDir>/src/data/data.test.js",
-          "<rootDir>/src/lib/migrations.test.js"
+          "<rootDir>/src/**/*.test.js"
+        ],
+        "testPathIgnorePatterns": [
+          "\\.rn\\.test\\.js$"
         ]
       },
       {

@@ -20,7 +20,8 @@ export default function LogSheet() {
   const [step, setStep] = useState(1);
   const [sel, setSel] = useState(null);
   const [mins, setMins] = useState(30);
-  const [note, setNote] = useState(''); // optional session title/note
+  const [note, setNote] = useState(''); // optional session note → becomes a journal entry
+  const [milestone, setMilestone] = useState(false); // mark the note as a milestone
   const [mounted, setMounted] = useState(false);
 
   const slide = useRef(new Animated.Value(0)).current; // 0 hidden, 1 shown
@@ -36,6 +37,7 @@ export default function LogSheet() {
       }
       setMins(30);
       setNote('');
+      setMilestone(false);
       setMounted(true);
     }
     Animated.timing(slide, {
@@ -176,16 +178,16 @@ export default function LogSheet() {
                 })}
               </View>
 
-              {/* optional note — becomes the session's title in Recent moments */}
+              {/* optional note — saved to your Journal (and the session's title) */}
               <Text style={{ fontSize: 12, fontFamily: sans(700), letterSpacing: 1.2, textTransform: 'uppercase', color: t.inkFaint, marginBottom: 10 }}>
                 Note · <Text style={{ fontFamily: sans(600) }}>optional</Text>
               </Text>
               <TextInput
                 value={note}
                 onChangeText={setNote}
-                placeholder="e.g. Morning pages, chapter 3"
+                placeholder="A line about how it went…"
                 placeholderTextColor={t.inkFaint}
-                maxLength={80}
+                maxLength={140}
                 returnKeyType="done"
                 style={{
                   borderWidth: 1.5,
@@ -197,11 +199,21 @@ export default function LogSheet() {
                   fontFamily: sans(500),
                   color: t.ink,
                   backgroundColor: t.surface,
-                  marginBottom: 24,
+                  marginBottom: 14,
                 }}
               />
 
-              <Button onPress={() => onCommit(sel, mins, note)} style={{ backgroundColor: btnBg(sel) }} textStyle={{ color: '#fff' }}>
+              {/* mark this note as a milestone — only meaningful with a note */}
+              <Pressable
+                onPress={() => setMilestone((m) => !m)}
+                disabled={!note.trim()}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 9, alignSelf: 'flex-start', paddingHorizontal: 15, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: milestone ? '#f6bf5c' : t.line, backgroundColor: milestone ? 'rgba(246,191,92,0.14)' : t.surface2, opacity: note.trim() ? 1 : 0.5, marginBottom: 24 }}
+              >
+                <Icon name="star" size={15} color={milestone ? '#f6bf5c' : t.inkFaint} />
+                <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: milestone ? t.ink : t.inkSoft }}>Mark as milestone</Text>
+              </Pressable>
+
+              <Button onPress={() => onCommit(sel, mins, note, { milestone: milestone && !!note.trim() })} style={{ backgroundColor: btnBg(sel) }} textStyle={{ color: '#fff' }}>
                 Log {mins} minutes
               </Button>
               <Button variant="ghost" onPress={onClose} style={{ marginTop: 8 }}>

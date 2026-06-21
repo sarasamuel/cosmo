@@ -8,6 +8,7 @@ describe('migrateData', () => {
     expect(m.planHistory).toEqual({});       // v1 backfill
     expect(m.relax.tracked).toBe(true);       // v1 derive
     expect(m.sessions[0].sid).toBeDefined();  // v2 backfill
+    expect(Array.isArray(m.journal)).toBe(true); // v3 backfill
   });
 
   test('relax.tracked derives false when desired is 0', () => {
