@@ -2,7 +2,7 @@
    button (allocation is set weekly via the plan sheet, not fixed forever).
    Ported from Identities in screens2.jsx. */
 import React from 'react';
-import { ScrollView, View, Text, Pressable, Switch } from 'react-native';
+import { ScrollView, View, Text, Pressable, Switch, Alert } from 'react-native';
 import { useStore, useTheme } from '../store/Store';
 import { Card, Glyph, Eyebrow, SectionTitle, Button, Pill } from '../components/primitives';
 import Icon from '../components/Icon';
@@ -24,7 +24,31 @@ const TIME_PRESETS = [
 
 export default function Identities() {
   const { t, colorsFor } = useTheme();
-  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, restart, theme, setTheme, reminder, setReminderEnabled, setReminderTime, session, syncStatus, lastSyncedAt, openBackup, signOut } = useStore();
+  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, restart, theme, setTheme, reminder, setReminderEnabled, setReminderTime, session, syncStatus, lastSyncedAt, openBackup, signOut, exportData, deleteAccount } = useStore();
+
+  const onExport = async () => {
+    const res = await exportData();
+    if (!res.ok && res.error) Alert.alert('Couldn’t export', res.error);
+  };
+  const onDelete = () => {
+    Alert.alert(
+      'Delete account & data?',
+      session
+        ? 'This permanently deletes your cloud account and erases all Cosmo data on this device. This cannot be undone.'
+        : 'This erases all Cosmo data on this device. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const res = await deleteAccount();
+            if (!res.ok) Alert.alert('Couldn’t delete', res.error || 'Please try again.');
+          },
+        },
+      ],
+    );
+  };
   const total = identities.reduce((s, i) => s + i.desired, 0);
   const maxPlan = Math.max(...identities.map((i) => i.desired), 1);
   const pad = useScreenPad();
@@ -227,7 +251,15 @@ export default function Identities() {
         );
       })()}
 
-      <Button variant="ghost" onPress={restart} style={{ marginTop: 6 }}>
+      {/* data & privacy — export everything, or delete account + wipe device */}
+      <Pressable onPress={onExport} style={({ pressed }) => ({ marginTop: 16, paddingVertical: 10, alignItems: 'center', opacity: pressed ? 0.6 : 1 })}>
+        <Text style={{ fontSize: 15, fontFamily: sans(600), color: t.inkSoft }}>Export my data</Text>
+      </Pressable>
+      <Pressable onPress={onDelete} style={({ pressed }) => ({ paddingVertical: 10, alignItems: 'center', opacity: pressed ? 0.6 : 1 })}>
+        <Text style={{ fontSize: 15, fontFamily: sans(700), color: t.warn }}>Delete account &amp; data</Text>
+      </Pressable>
+
+      <Button variant="ghost" onPress={restart} style={{ marginTop: 10 }}>
         <Icon name="sparkle" size={18} color={t.inkSoft} />
         <Text style={{ marginLeft: 10, fontSize: 18, fontFamily: sans(600), color: t.inkSoft }}>Replay the intro</Text>
       </Button>

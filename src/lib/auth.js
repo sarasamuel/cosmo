@@ -59,6 +59,22 @@ export async function signOut() {
   }
 }
 
+// Permanently delete the signed-in user's cloud account + data (via the
+// delete-account Edge Function — see supabase/functions/delete-account). On
+// success the session is also cleared. Returns { ok, error } and never throws.
+export async function deleteAccount() {
+  if (!supabase) return { ok: false, error: 'not-configured' };
+  try {
+    const { error } = await supabase.functions.invoke('delete-account');
+    if (error) throw error;
+    await supabase.auth.signOut();
+    return { ok: true };
+  } catch (e) {
+    warn('deleteAccount', e);
+    return { ok: false, error: e.message || 'Could not delete your account.' };
+  }
+}
+
 export async function getSession() {
   if (!supabase) return null;
   try {

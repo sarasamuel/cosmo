@@ -4,7 +4,7 @@
    complete + the mutable domain state are persisted to AsyncStorage. */
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Share } from 'react-native';
 import * as storage from '../lib/storage';
 import * as notifications from '../lib/notifications';
 import * as auth from '../lib/auth';
@@ -79,6 +79,7 @@ export function StoreProvider({ children }) {
   const syncedStampRef = useRef(0); // local version last CONFIRMED in the cloud (dirty when stampRef > this)
   const retryAttemptRef = useRef(0); // exponential-backoff counter for failed pushes
   const flushingRef = useRef(false); // a push is in flight (prevents concurrent/overlapping pushes)
+  const buildSnapshotRef = useRef(null); // latest buildSnapshot, for export from stable callbacks
 
   // hydrate persisted prefs + the mutable domain state. storage.getItem logs and
   // returns null on a failed read (never rejects), so a read error degrades to
@@ -178,6 +179,46 @@ export function StoreProvider({ children }) {
   const closeBackup = useCallback(() => setBackupOpen(false), []);
   const signOut = useCallback(() => auth.signOut(), []);
 
+  // Export the full local snapshot as JSON via the share sheet (works offline,
+  // signed in or not). Returns { ok, error }.
+  const exportData = useCallback(async () => {
+    try {
+      const json = JSON.stringify(buildSnapshotRef.current ? buildSnapshotRef.current() : {}, null, 2);
+      await Share.share({ message: json, title: 'Cosmo data export' });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e && e.message ? e.message : 'Could not export.' };
+    }
+  }, []);
+
+  // Factory reset: clear every persisted key, cancel notifications, and reset
+  // in-memory state to a pristine pre-onboarding slate (routes back to AuthFlow).
+  const resetLocal = useCallback(() => {
+    [KEY_THEME, KEY_STARTED, KEY_WEEK, KEY_FORM, KEY_DATA, KEY_REMINDER, KEY_LASTNOTIF,
+      KEY_FREEHOURS, KEY_STAMP, KEY_NAME, KEY_AUTHSEEN, KEY_ALLMET, KEY_SYNCED, KEY_SYNCEDSTAMP]
+      .forEach((k) => storage.removeItem(k));
+    notifications.cancelDaily();
+    setIdentities(IDENTITIES); setRetired([]); setRelax(RELAX); setSessions(SESSIONS); setPlanHistory({});
+    setThemeName('dark'); setFormState('orbit'); setFreeHoursState(FREE_HOURS_WEEK.def);
+    setReminder(DEFAULT_REMINDER); setWeekPlanned(false); setAllMetWeek(0);
+    setUserNameState(''); setAuthSeen(false); setStarted(false);
+    stampRef.current = 0; syncedStampRef.current = 0;
+    setSyncStatus('idle'); setLastSyncedAt(0);
+  }, []);
+
+  // Delete account + data. Signed in: delete the cloud account first (cascades
+  // the data); only wipe the device if that succeeds, so a failed cloud delete
+  // doesn't strand the account with the local copy gone. Signed out: just wipe
+  // local ("delete my data"). Returns { ok, error }.
+  const deleteAccount = useCallback(async () => {
+    if (sessionRef.current && sessionRef.current.user) {
+      const res = await auth.deleteAccount();
+      if (!res.ok) return res;
+    }
+    resetLocal();
+    return { ok: true };
+  }, [resetLocal]);
+
   const setUserName = useCallback((name) => {
     const v = (name || '').trim();
     setUserNameState(v);
@@ -209,6 +250,9 @@ export function StoreProvider({ children }) {
     identities, retired, relax, sessions, planHistory,
     theme, form, freeHours, reminder, weekPlanned, started, allMetWeek, userName,
   });
+  // keep a ref to the latest snapshot builder so export reads current state
+  // from a stable callback (no giant dependency list).
+  buildSnapshotRef.current = buildSnapshot;
 
   // apply a remote snapshot to local state + the offline cache (pref keys that
   // have no auto-persisting setter are written here). The change-watch effect
@@ -701,6 +745,8 @@ export function StoreProvider({ children }) {
       openBackup,
       closeBackup,
       signOut,
+      exportData,
+      deleteAccount,
       authConfigured: auth.isConfigured,
       userName,
       setUserName,
@@ -721,7 +767,7 @@ export function StoreProvider({ children }) {
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
       focusCosmos, clearCosmos, detail, openDetail, closeDetail, review, openReview, closeReview, commitReview,
       celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, freeHours, setFreeHours, setRelaxAllowance,
-      session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, userName, setUserName, authSeen, markAuthSeen,
+      session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, exportData, deleteAccount, userName, setUserName, authSeen, markAuthSeen,
       setDesired, seedOnboarding, enter, restart, toast,
     ]
   );
