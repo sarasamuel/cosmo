@@ -9,6 +9,7 @@ import * as storage from '../lib/storage';
 import * as notifications from '../lib/notifications';
 import * as auth from '../lib/auth';
 import * as sync from '../lib/sync';
+import { DATA_VERSION, migrateData } from '../lib/migrations';
 import {
   IDENTITIES, RELAX, SESSIONS, FREE_HOURS_WEEK,
   alignment as alignmentFn, assignHue, fmtWhen,
@@ -124,7 +125,9 @@ export function StoreProvider({ children }) {
       }
       if (d) {
         try {
-          const data = JSON.parse(d);
+          // migrate the stored blob up to the current shape before applying.
+          // The persist effect rewrites it stamped at DATA_VERSION once state settles.
+          const data = migrateData(JSON.parse(d));
           if (Array.isArray(data?.identities) && data.identities.length) setIdentities(data.identities);
           if (Array.isArray(data?.retired)) setRetired(data.retired);
           if (data?.relax) setRelax(data.relax);
@@ -191,7 +194,7 @@ export function StoreProvider({ children }) {
   // completes. Written as one atomic blob (no partial/half-saved states).
   useEffect(() => {
     if (!hydrated) return;
-    storage.setItem(KEY_DATA, JSON.stringify({ identities, retired, relax, sessions, planHistory }));
+    storage.setItem(KEY_DATA, JSON.stringify({ v: DATA_VERSION, identities, retired, relax, sessions, planHistory }));
   }, [hydrated, identities, retired, relax, sessions, planHistory]);
 
   // ===== Cloud sync (document backup) ====================================
@@ -201,7 +204,7 @@ export function StoreProvider({ children }) {
 
   // the snapshot we back up — everything that defines a user's state
   const buildSnapshot = () => ({
-    v: 1,
+    v: DATA_VERSION,
     updatedAt: stampRef.current,
     identities, retired, relax, sessions, planHistory,
     theme, form, freeHours, reminder, weekPlanned, started, allMetWeek, userName,
@@ -210,7 +213,8 @@ export function StoreProvider({ children }) {
   // apply a remote snapshot to local state + the offline cache (pref keys that
   // have no auto-persisting setter are written here). The change-watch effect
   // below will fire once and push it straight back — a harmless idempotent echo.
-  const applyRemote = (snap) => {
+  const applyRemote = (snapRaw) => {
+    const snap = migrateData(snapRaw); // upgrade an older app version's backup before applying
     if (Array.isArray(snap.identities) && snap.identities.length) setIdentities(snap.identities);
     if (Array.isArray(snap.retired)) setRetired(snap.retired);
     if (snap.relax) setRelax(snap.relax);
