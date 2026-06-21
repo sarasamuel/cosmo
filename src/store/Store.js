@@ -356,9 +356,26 @@ export function StoreProvider({ children }) {
         storage.setItem(KEY_SYNCEDSTAMP, String(syncedStampRef.current));
         markSynced();
       } else {
-        // local is newer / no remote → back it up via the retrying push path
+        // local is newer / no remote → back it up now. Force the upload even when
+        // the version looks "clean" (stamp 0 on a fresh device): the cloud has
+        // nothing yet, so the first sign-in must push local state. Stamp a real
+        // version first so future dirty-tracking is consistent.
+        if (!stampRef.current) {
+          stampRef.current = Date.now();
+          storage.setItem(KEY_STAMP, String(stampRef.current));
+        }
         pendingRef.current = buildSnapshot();
-        schedulePush(0);
+        setSyncStatus('syncing');
+        const ok = await sync.pushState(uid, pendingRef.current);
+        if (cancelled) return;
+        if (ok) {
+          syncedStampRef.current = pendingRef.current.updatedAt || Date.now();
+          storage.setItem(KEY_SYNCEDSTAMP, String(syncedStampRef.current));
+          markSynced();
+        } else {
+          setSyncStatus('error');
+          schedulePush(RETRY_BASE); // durable retry
+        }
       }
     })();
     return () => { cancelled = true; };
