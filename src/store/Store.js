@@ -13,7 +13,7 @@ import { DATA_VERSION, migrateData } from '../lib/migrations';
 import {
   IDENTITIES, RELAX, SESSIONS, FREE_HOURS_WEEK,
   alignment as alignmentFn, assignHue, fmtWhen,
-  weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS, mergeSessions,
+  weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS, mergeSessions, newSessionId,
 } from '../data/data';
 import { themes, identityColors } from '../theme/theme';
 
@@ -532,7 +532,7 @@ export function StoreProvider({ children }) {
     // caps (rest is never a failure — there's nowhere for it to "spill" to).
     if (idn.isRelax) {
       const overAllowance = weekPoints(sessions, 'relax') + bump >= relax.desired;
-      setSessions((s) => { const ts = Date.now(); return [{ id: 'relax', label: title || 'Relaxation', mins, ts, when: fmtWhen(ts) }, ...s]; });
+      setSessions((s) => { const ts = Date.now(); return [{ id: 'relax', sid: newSessionId(), label: title || 'Relaxation', mins, ts, when: fmtWhen(ts) }, ...s]; });
       setLogOpen(false);
       if (!silent) showToast({ kind: 'log', name: 'Relaxation', mins, idn, full: overAllowance }, 2800);
       return;
@@ -547,7 +547,7 @@ export function StoreProvider({ children }) {
     // projected list (only `actual` matters for the all-met check)
     const nextIdentities = liveIdentities.map((i) => (i.id === idn.id ? { ...i, actual: newActual } : i));
 
-    setSessions((s) => { const ts = Date.now(); return [{ id: idn.id, label: title || idn.name + ' session', mins, ts, when: fmtWhen(ts) }, ...s]; });
+    setSessions((s) => { const ts = Date.now(); return [{ id: idn.id, sid: newSessionId(), label: title || idn.name + ' session', mins, ts, when: fmtWhen(ts) }, ...s]; });
     setLogOpen(false);
     // if this log completes the week, let the reactive all-met effect own the
     // moment (whole-week triumph > single-identity crossing > plain toast) — skip

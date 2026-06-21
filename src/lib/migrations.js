@@ -12,7 +12,18 @@
    Each step takes the data at version N-1 and returns it at version N. Keep
    steps pure and defensive (inputs may be partial/corrupt). */
 
-export const DATA_VERSION = 1;
+export const DATA_VERSION = 2;
+
+// Deterministic id for a legacy session from its content, so the SAME session
+// gets the SAME sid on every device — letting the cross-device merge dedupe it
+// (incoming cloud snapshots are migrated before merging). djb2 over the content
+// tuple, plus the ts, keeps collisions vanishingly unlikely.
+function sidFor(s) {
+  const str = `${s.id}|${s.ts}|${s.mins}|${s.label || ''}`;
+  let h = 5381;
+  for (let i = 0; i < str.length; i += 1) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return `s_${(h >>> 0).toString(36)}_${Number(s.ts || 0).toString(36)}`;
+}
 
 const MIGRATIONS = {
   // v0 (pre-versioning) → v1: codify the fields added since first release so an
@@ -25,6 +36,12 @@ const MIGRATIONS = {
       out.relax = { ...out.relax, tracked: (out.relax.desired || 0) > 0 };
     }
     return out;
+  },
+  // v1 → v2: backfill a stable `sid` on every session that predates session ids,
+  // so the multi-device session merge keys on the id instead of a content tuple.
+  2: (d) => {
+    if (!Array.isArray(d.sessions)) return d;
+    return { ...d, sessions: d.sessions.map((s) => (s && s.sid == null ? { ...s, sid: sidFor(s) } : s)) };
   },
 };
 

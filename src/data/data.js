@@ -14,18 +14,26 @@ export const IDENTITIES = [
   { id: 'painter', name: 'Painter', glyph: 'P', palette: 'painter', hue: 80, desired: 15, actual: 3, lastActiveDays: 8, streak: 0 },
 ];
 
+// Unique id for a newly-logged session. The random suffix avoids collisions even
+// within the same millisecond or across devices. Two distinct log actions ARE
+// distinct sessions (even with identical identity/mins/ts), so randomness — not
+// content — is the right identity here.
+export function newSessionId() {
+  return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 // Union two session lists into one de-duplicated, newest-first list. Sessions
-// are append-only and carry no unique id, so identity is the tuple
-// (id, ts, mins, label) — two genuinely distinct sessions never collide on all
-// four (ts is ms-precise). Critical for multi-device safety: restoring a cloud
-// snapshot must MERGE sessions, never overwrite, or a session logged on one
-// device is lost when another device (with slightly older state) syncs.
+// are append-only and carry a stable `sid`, so identity is the sid (legacy
+// rows without one fall back to the content tuple). Critical for multi-device
+// safety: restoring a cloud snapshot must MERGE sessions, never overwrite, or a
+// session logged on one device is lost when another device syncs. (Incoming
+// snapshots are migrated first, so both sides carry sids before this runs.)
 export function mergeSessions(a, b) {
   const seen = new Set();
   const out = [];
   [...(a || []), ...(b || [])].forEach((s) => {
     if (!s || !s.ts) return;
-    const key = `${s.id}|${s.ts}|${s.mins}|${s.label || ''}`;
+    const key = s.sid != null ? `sid:${s.sid}` : `${s.id}|${s.ts}|${s.mins}|${s.label || ''}`;
     if (seen.has(key)) return;
     seen.add(key);
     out.push(s);
@@ -133,7 +141,7 @@ export const SESSIONS = (() => {
     SEED_ACTIVITY[id].forEach((daysAgo, k) => {
       // stagger same-day repeats a few hours apart so ordering is stable
       const ts = now - daysAgo * DAY_MS - k * 3 * 3600000;
-      out.push({ id, label: SEED_LABELS[id], mins: SEED_MINS[id], ts, when: fmtWhen(ts) });
+      out.push({ id, sid: `seed_${id}_${daysAgo}_${k}`, label: SEED_LABELS[id], mins: SEED_MINS[id], ts, when: fmtWhen(ts) });
     });
   });
   return out.sort((a, b) => b.ts - a.ts);
