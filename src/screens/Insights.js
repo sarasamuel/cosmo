@@ -3,7 +3,7 @@ import React from 'react';
 import { ScrollView, View, Text } from 'react-native';
 import { useStore, useTheme } from '../store/Store';
 import { pastWeeks } from '../data/data';
-import { Card, Eyebrow, Pill } from '../components/primitives';
+import { Card, Eyebrow } from '../components/primitives';
 import Icon from '../components/Icon';
 import CoachNote from '../components/CoachNote';
 import { coachNote, buildInsights } from '../lib/coach';
@@ -15,7 +15,7 @@ const TONE = { neglect: 'clock', nudge: 'arrow', balance: 'flame' };
 
 export default function Insights() {
   const { t, colorsFor } = useTheme();
-  const { identities, retired, sessions, planHistory, openLog } = useStore();
+  const { identities, retired, sessions, planHistory } = useStore();
   const find = (id) => identities.find((i) => i.id === id) || retired.find((i) => i.id === id);
   const pad = useScreenPad();
   // real insights + last-week reference, derived from the live data (no demo)
@@ -51,16 +51,8 @@ export default function Insights() {
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 17, fontFamily: sans(700), lineHeight: 22, marginBottom: 6, color: t.ink }}>{ins.title}</Text>
                   <Text style={{ fontSize: 14.5, color: t.inkSoft, lineHeight: 22 }}>{ins.body}</Text>
-                  {ins.action && idn && (
-                    <Pill
-                      bg={c.soft}
-                      onPress={() => openLog(idn)}
-                      style={{ marginTop: 14, alignSelf: 'flex-start' }}
-                    >
-                      <Text style={{ fontSize: 13, fontFamily: sans(700), color: t.ink }}>{ins.action}</Text>
-                      <Icon name="chevron" size={14} color={t.ink} />
-                    </Pill>
-                  )}
+                  {/* the "log time" call-to-action now lives on the Home screen
+                      ("A gentle nudge"); Insights stays a place for observations. */}
                 </View>
               </Card>
             );

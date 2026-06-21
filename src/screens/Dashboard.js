@@ -3,8 +3,8 @@ import React from 'react';
 import { ScrollView, View, Text, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useStore, useTheme } from '../store/Store';
-import { pastWeeks, fmtWhen } from '../data/data';
-import { coachNote } from '../lib/coach';
+import { pastWeeks, fmtWhen, fmtMins, usualMins } from '../data/data';
+import { coachNote, focusIdentities } from '../lib/coach';
 import CosmosViz from '../viz/CosmosViz';
 import ConstellationViz from '../viz/ConstellationViz';
 import { darkTheme } from '../theme/theme';
@@ -146,6 +146,11 @@ export default function Dashboard() {
   // "A note from Cosmo" + the date header, generated from this week's data
   const coach = coachNote(identities, lastWeekRows);
 
+  // concrete "log time toward your intention" suggestions (relocated from
+  // Insights) — the identities furthest below their intention, each with a
+  // suggested session length. Empty when every identity is at/above intention.
+  const suggestions = focusIdentities(identities, 2);
+
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 8, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
       <View style={{ paddingTop: 8 }}>
@@ -190,12 +195,6 @@ export default function Dashboard() {
               {lagWeekNote}
             </Text>
           )}
-          {!single && livedAny && (
-            <Pill bg={t.ink} onPress={() => openLog(lag)} style={{ marginTop: 16, alignSelf: 'flex-start' }}>
-              <Icon name="plus" size={15} color={t.bg} />
-              <Text style={{ color: t.bg, fontFamily: sans(700), fontSize: 13 }}>Tend to {lag.name}</Text>
-            </Pill>
-          )}
         </Card>
       ) : (
         <Card style={{ marginTop: 18, padding: 26, alignItems: 'center' }}>
@@ -208,6 +207,30 @@ export default function Dashboard() {
             <Text style={{ color: t.bg, fontFamily: sans(700), fontSize: 13.5 }}>Add an identity</Text>
           </Pill>
         </Card>
+      )}
+
+      {/* gentle nudges — concrete suggestions toward your intentions (relocated
+          from Insights). Only when identities sit below their intention. */}
+      {hasIdentities && suggestions.length > 0 && (
+        <View style={{ marginTop: 18 }}>
+          <SectionTitle style={{ marginBottom: 10 }}>A gentle nudge</SectionTitle>
+          {suggestions.map((idn) => {
+            const c = colorsFor(idn);
+            return (
+              <Card key={idn.id} style={{ marginBottom: 10, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <Glyph char={idn.glyph} size={40} fontSize={18} color={c.color} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 15.5, fontFamily: sans(700), color: t.ink }}>Log {fmtMins(usualMins(idn))} of {idn.name}</Text>
+                  <Text style={{ fontSize: 13, color: t.inkSoft, fontFamily: sans(600), marginTop: 2 }}>to move toward your {idn.desired}% intention</Text>
+                </View>
+                <Pill bg={c.color} onPress={() => openLog(idn)} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+                  <Icon name="plus" size={14} color="#fff" />
+                  <Text style={{ color: '#fff', fontFamily: sans(700), fontSize: 13 }}>Log</Text>
+                </Pill>
+              </Card>
+            );
+          })}
+        </View>
       )}
 
       {/* breakdown */}
