@@ -1,9 +1,10 @@
 -- Cosmo — Supabase schema + Row-Level Security
 -- ---------------------------------------------------------------------------
 -- Run this once in the Supabase SQL editor (Dashboard → SQL → New query).
--- It creates the three tables Cosmo syncs (profiles / identities / sessions),
--- locks each row to its owner via RLS, keeps updated_at fresh, and auto-creates
--- a profile row when a user signs up.
+-- The app is local-first: the device (AsyncStorage) is the source of truth, and
+-- the whole domain snapshot is backed up as ONE json document in profiles.state
+-- (see src/lib/sync.js). RLS locks every row to its owner; a profile row is
+-- auto-created on signup.
 --
 -- ⚠️  EMAIL CODE (not magic link): to make sign-in send a 6-digit *code* instead
 --     of a link, edit the email template in
@@ -13,71 +14,25 @@
 --     (The auth lib calls verifyOtp with that token.)
 -- ---------------------------------------------------------------------------
 
--- ---- profiles: one row per user — preferences + week state ----------------
+-- ---- profiles: one row per user — the whole app snapshot in `state` ---------
 create table if not exists public.profiles (
-  id            uuid primary key references auth.users (id) on delete cascade,
-  theme         text    default 'dark',
-  form          text    default 'orbit',
-  free_hours    int     default 35,
-  relax_desired int     default 15,
-  relax_tracked boolean default true,
-  reminder      jsonb   default '{"enabled":false,"hour":9,"minute":0}'::jsonb,
-  week_planned  boolean default false,
-  -- escape hatch for misc prefs that don't warrant a column yet
-  extra         jsonb   default '{}'::jsonb,
-  updated_at    timestamptz default now()
+  id         uuid primary key references auth.users (id) on delete cascade,
+  state      jsonb default '{}'::jsonb,   -- entire domain snapshot (see buildSnapshot in Store.js)
+  updated_at timestamptz default now()
 );
 
--- ---- identities: progress lives here; `retired` keeps them in history ------
-create table if not exists public.identities (
-  user_id          uuid not null references auth.users (id) on delete cascade,
-  id               text not null,            -- app-side identity id (e.g. 'writer')
-  name             text not null,
-  glyph            text,
-  palette          text,                     -- canonical color key, or null
-  hue              int,                      -- for runtime-added identities
-  desired          int  default 0,
-  actual           int  default 0,
-  last_active_days int  default 99,
-  streak           int  default 0,
-  usual_mins       int,
-  retired          boolean default false,
-  updated_at       timestamptz default now(),
-  primary key (user_id, id)
-);
+-- Idempotent migration for databases created before `state` existed (e.g. an
+-- earlier normalized schema). Safe to run repeatedly.
+alter table public.profiles add column if not exists state jsonb default '{}'::jsonb;
 
--- ---- sessions: the history. Real timestamps (no frozen "Just now"). --------
-create table if not exists public.sessions (
-  id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references auth.users (id) on delete cascade,
-  identity_id text,                          -- identity id or 'relax'
-  label       text,
-  mins        int not null,
-  created_at  timestamptz default now()
-);
+-- ---- Row-Level Security: a user can only ever touch their own row ----------
+alter table public.profiles enable row level security;
 
-create index if not exists sessions_user_created_idx
-  on public.sessions (user_id, created_at desc);
-
--- ---- Row-Level Security: a user can only ever touch their own rows --------
-alter table public.profiles   enable row level security;
-alter table public.identities enable row level security;
-alter table public.sessions   enable row level security;
-
-drop policy if exists "own profile"    on public.profiles;
-drop policy if exists "own identities" on public.identities;
-drop policy if exists "own sessions"   on public.sessions;
-
+drop policy if exists "own profile" on public.profiles;
 create policy "own profile" on public.profiles
   for all using (auth.uid() = id) with check (auth.uid() = id);
 
-create policy "own identities" on public.identities
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "own sessions" on public.sessions
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
--- ---- keep updated_at current on edits (for last-write-wins sync) ----------
+-- ---- keep updated_at current on edits --------------------------------------
 create or replace function public.touch_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -86,15 +41,11 @@ begin
 end;
 $$;
 
-drop trigger if exists profiles_touch   on public.profiles;
-drop trigger if exists identities_touch on public.identities;
-
-create trigger profiles_touch   before update on public.profiles
-  for each row execute function public.touch_updated_at();
-create trigger identities_touch before update on public.identities
+drop trigger if exists profiles_touch on public.profiles;
+create trigger profiles_touch before update on public.profiles
   for each row execute function public.touch_updated_at();
 
--- ---- auto-create a profile row when a new user signs up -------------------
+-- ---- auto-create a profile row when a new user signs up --------------------
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer as $$
 begin
@@ -104,16 +55,23 @@ end;
 $$;
 
 drop trigger if exists on_auth_user_created on auth.users;
-
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
 -- ---------------------------------------------------------------------------
--- Document backup (slice 3). The app syncs its whole domain state as one JSON
--- snapshot per user (last-write-wins by a timestamp inside the blob). This reuses
--- the profiles row, so just add a `state` column. The identities/sessions tables
--- above stay for a possible future relational sync; they're unused for now.
--- (Safe to run again — `if not exists`.)
+-- OPTIONAL CLEANUP — only if you previously ran the old normalized schema.
+-- The app never reads/writes these tables or the per-column profile fields;
+-- everything lives in profiles.state. They're empty dead weight. Uncomment to
+-- drop them. (Destructive — confirm nothing else uses them first.)
 -- ---------------------------------------------------------------------------
-alter table public.profiles add column if not exists state jsonb;
+-- drop table if exists public.identities cascade;
+-- drop table if exists public.sessions   cascade;
+-- alter table public.profiles drop column if exists theme;
+-- alter table public.profiles drop column if exists form;
+-- alter table public.profiles drop column if exists free_hours;
+-- alter table public.profiles drop column if exists relax_desired;
+-- alter table public.profiles drop column if exists relax_tracked;
+-- alter table public.profiles drop column if exists reminder;
+-- alter table public.profiles drop column if exists week_planned;
+-- alter table public.profiles drop column if exists extra;

@@ -8,6 +8,7 @@ import { Card, Glyph, Eyebrow, SectionTitle, Button, Pill } from '../components/
 import Icon from '../components/Icon';
 import DualBar from '../components/DualBar';
 import { useScreenPad } from '../lib/layout';
+import { fmtAgo } from '../data/data';
 import { serif, sans } from '../theme/fonts';
 
 // 12-hour clock label from 24-hour parts, e.g. (18, 0) -> "6:00 PM".
@@ -23,7 +24,7 @@ const TIME_PRESETS = [
 
 export default function Identities() {
   const { t, colorsFor } = useTheme();
-  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, restart, theme, setTheme, reminder, setReminderEnabled, setReminderTime, session, openBackup, signOut } = useStore();
+  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, restart, theme, setTheme, reminder, setReminderEnabled, setReminderTime, session, syncStatus, lastSyncedAt, openBackup, signOut } = useStore();
   const total = identities.reduce((s, i) => s + i.desired, 0);
   const maxPlan = Math.max(...identities.map((i) => i.desired), 1);
   const pad = useScreenPad();
@@ -190,14 +191,27 @@ export default function Identities() {
       </Card>
 
       {/* cloud backup — passwordless email-code sign-in (local-first; opt-in) */}
+      {(() => {
+        // live sync state → status line + dot color (no signal before; this is #10)
+        const failed = session && syncStatus === 'error';
+        const syncing = session && syncStatus === 'syncing';
+        const dotBg = !session ? t.surface2 : failed ? t.warn : t.good;
+        const statusText = !session
+          ? 'Save your progress to a new phone'
+          : failed
+          ? 'Backup failed — will retry'
+          : syncing
+          ? 'Syncing…'
+          : `Backed up${lastSyncedAt ? ` · ${fmtAgo(lastSyncedAt)}` : ''}`;
+        return (
       <Card style={{ marginTop: 12, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-        <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: session ? t.good : t.surface2, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name={session ? 'check' : 'sparkle'} size={18} stroke={2.4} color={session ? '#fff' : t.inkSoft} />
+        <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: dotBg, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name={!session ? 'sparkle' : failed ? 'clock' : 'check'} size={18} stroke={2.4} color={session ? '#fff' : t.inkSoft} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>Cloud backup</Text>
-          <Text numberOfLines={1} style={{ fontSize: 13, color: t.inkSoft, fontFamily: sans(600) }}>
-            {session ? `Backed up · ${session.user?.email || 'signed in'}` : 'Save your progress to a new phone'}
+          <Text numberOfLines={1} style={{ fontSize: 13, color: failed ? t.warn : t.inkSoft, fontFamily: sans(600) }}>
+            {statusText}{session && !failed && !syncing && session.user?.email ? ` · ${session.user.email}` : ''}
           </Text>
         </View>
         {session ? (
@@ -210,6 +224,8 @@ export default function Identities() {
           </Pill>
         )}
       </Card>
+        );
+      })()}
 
       <Button variant="ghost" onPress={restart} style={{ marginTop: 6 }}>
         <Icon name="sparkle" size={18} color={t.inkSoft} />

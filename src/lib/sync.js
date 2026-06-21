@@ -5,10 +5,10 @@
    stays the source of truth (AsyncStorage); we pull on sign-in and push on
    change. Every call is guarded — no Supabase / no session → logged no-op. */
 import { supabase } from './supabase';
+import { reportError } from './telemetry';
 
 function warn(op, e) {
-  // eslint-disable-next-line no-console
-  console.warn(`[sync] ${op} failed:`, e && e.message ? e.message : e);
+  reportError('sync', e, { op });
 }
 
 // Fetch the user's saved snapshot (or null if none / not signed in / offline).

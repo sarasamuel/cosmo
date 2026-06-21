@@ -14,6 +14,25 @@ export const IDENTITIES = [
   { id: 'painter', name: 'Painter', glyph: 'P', palette: 'painter', hue: 80, desired: 15, actual: 3, lastActiveDays: 8, streak: 0 },
 ];
 
+// Union two session lists into one de-duplicated, newest-first list. Sessions
+// are append-only and carry no unique id, so identity is the tuple
+// (id, ts, mins, label) — two genuinely distinct sessions never collide on all
+// four (ts is ms-precise). Critical for multi-device safety: restoring a cloud
+// snapshot must MERGE sessions, never overwrite, or a session logged on one
+// device is lost when another device (with slightly older state) syncs.
+export function mergeSessions(a, b) {
+  const seen = new Set();
+  const out = [];
+  [...(a || []), ...(b || [])].forEach((s) => {
+    if (!s || !s.ts) return;
+    const key = `${s.id}|${s.ts}|${s.mins}|${s.label || ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(s);
+  });
+  return out.sort((x, y) => (y.ts || 0) - (x.ts || 0));
+}
+
 export function fmtMins(m) {
   const h = Math.floor(m / 60);
   const mm = Math.round(m % 60);
@@ -23,6 +42,21 @@ export function fmtMins(m) {
 }
 
 export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// Short relative time for status lines ("just now", "2m ago", "3h ago", "Jun 8").
+// 0/undefined → '' so callers can omit the label entirely.
+export function fmtAgo(ts, nowMs) {
+  if (!ts) return '';
+  const now = nowMs || Date.now();
+  const s = Math.max(0, Math.round((now - ts) / 1000));
+  if (s < 45) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = new Date(ts);
+  return `${MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
+}
 
 const DAY_MS = 86400000;
 const sameYMD = (a, b) =>

@@ -3,10 +3,10 @@
    a failed/corrupt read or a full disk is observable (and easy to route to real
    telemetry later) instead of silently resetting the user's data. */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { reportError } from './telemetry';
 
 function warn(op, key, err) {
-  // eslint-disable-next-line no-console
-  console.warn(`[storage] ${op} "${key}" failed:`, err && err.message ? err.message : err);
+  reportError('storage', err, { op, key });
 }
 
 export async function getItem(key) {

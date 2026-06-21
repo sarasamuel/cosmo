@@ -12,7 +12,7 @@
 
    Animation contract (from the spec, total ≈2.2s then hold):
    - stars enter at 0.3 + i*0.14s   - lines draw at 0.95 + k*0.08s
-   - wordmark 1.5s   - tagline 1.72s   - loading dots 1.9s */
+   - wordmark 1.5s   - tagline 1.72s */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, View, AccessibilityInfo, useWindowDimensions } from 'react-native';
 import Svg, { Defs, RadialGradient, Stop, G, Line, Circle } from 'react-native-svg';
@@ -112,7 +112,6 @@ export default function SplashScreen({ appReady, onHidden }) {
 
   const wordAt = 1500 / DURATION;
   const tagAt = 1720 / DURATION;
-  const dotsAt = 1900 / DURATION;
 
   return (
     // capture touches while shown so taps can't fall through to the app mounting
@@ -139,6 +138,19 @@ export default function SplashScreen({ appReady, onHidden }) {
               <Stop offset="78%" stopColor="#f6bf5c" />
               <Stop offset="100%" stopColor="#e7a23e" />
             </RadialGradient>
+            {/* soft glow per star — color at the core fading to fully transparent
+                (a gradient falloff, not a flat translucent disc) */}
+            {STARS.map((st, i) => {
+              const color = st.hero ? GOLD : JEWEL[st.key];
+              return (
+                <RadialGradient key={`g${i}`} id={`spGlow${i}`} cx="50%" cy="50%" r="50%">
+                  <Stop offset="0%" stopColor={color} stopOpacity="0.6" />
+                  <Stop offset="35%" stopColor={color} stopOpacity="0.28" />
+                  <Stop offset="70%" stopColor={color} stopOpacity="0.08" />
+                  <Stop offset="100%" stopColor={color} stopOpacity="0" />
+                </RadialGradient>
+              );
+            })}
           </Defs>
 
           {/* connecting lines — drawn via strokeDashoffset after the stars are up */}
@@ -164,8 +176,8 @@ export default function SplashScreen({ appReady, onHidden }) {
             return (
               // pure opacity fade-in — no scale/movement, the star just brightens from the background
               <AnimatedG key={`s${i}`} opacity={appear(start, 0.26)}>
-                {/* translucent halo (no blur filter — matches app convention) */}
-                <Circle cx={st.x} cy={st.y} r={st.r * 2.6} fill={color} opacity={0.22} />
+                {/* radial-gradient glow (fades to transparent, no hard ring) */}
+                <Circle cx={st.x} cy={st.y} r={st.r * 3.6} fill={`url(#spGlow${i})`} />
                 {st.hero && (
                   <G stroke={GOLD} strokeWidth={6} strokeLinecap="round" opacity={0.85}>
                     <Line x1={st.x - st.r * 2.3} y1={st.y} x2={st.x + st.r * 2.3} y2={st.y} />
@@ -193,13 +205,6 @@ export default function SplashScreen({ appReady, onHidden }) {
         >
           Make time for every you
         </Animated.Text>
-
-        {/* loading dots */}
-        <Animated.View style={{ position: 'absolute', bottom: 72, flexDirection: 'row', gap: 7, opacity: appear(dotsAt) }}>
-          {[0, 1, 2].map((i) => (
-            <View key={i} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(207,211,255,0.6)' }} />
-          ))}
-        </Animated.View>
       </View>
     </Animated.View>
   );

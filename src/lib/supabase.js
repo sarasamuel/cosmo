@@ -8,8 +8,8 @@
    helpers degrade to a logged no-op (like lib/notifications / lib/storage). */
 import 'react-native-url-polyfill/auto';
 import { AppState } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import secureStorage from './secureStorage';
 
 // Sanitize: a stray trailing slash or whitespace in the env value makes the
 // client build paths like `…//auth/v1/otp` → "Invalid path specified in request
@@ -22,10 +22,14 @@ const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 
 export const isConfigured = !!(url && anonKey);
 
+// Auth tokens (incl. the long-lived refresh token) persist in the device
+// Keychain/Keystore via expo-secure-store (see ./secureStorage), not plaintext
+// AsyncStorage. The adapter chunks around SecureStore's size limit and migrates
+// any token left over from the old AsyncStorage location on first read.
 export const supabase = isConfigured
   ? createClient(url, anonKey, {
       auth: {
-        storage: AsyncStorage,
+        storage: secureStorage,
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false, // no URL-based session (mobile, not web)

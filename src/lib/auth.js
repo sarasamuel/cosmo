@@ -9,12 +9,12 @@
    return { ok: false, error: 'not-configured' } instead of throwing, so the app
    stays usable offline-only. */
 import { supabase, isConfigured } from './supabase';
+import { reportError } from './telemetry';
 
 export { isConfigured };
 
 function warn(op, e) {
-  // eslint-disable-next-line no-console
-  console.warn(`[auth] ${op} failed:`, e && e.message ? e.message : e);
+  reportError('auth', e, { op });
 }
 
 // Step 1 — email the user a login code (creates the account if new).

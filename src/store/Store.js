@@ -4,6 +4,7 @@
    complete + the mutable domain state are persisted to AsyncStorage. */
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { AppState } from 'react-native';
 import * as storage from '../lib/storage';
 import * as notifications from '../lib/notifications';
 import * as auth from '../lib/auth';
@@ -11,7 +12,7 @@ import * as sync from '../lib/sync';
 import {
   IDENTITIES, RELAX, SESSIONS, FREE_HOURS_WEEK,
   alignment as alignmentFn, assignHue, fmtWhen,
-  weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS,
+  weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS, mergeSessions,
 } from '../data/data';
 import { themes, identityColors } from '../theme/theme';
 
@@ -29,6 +30,8 @@ const KEY_FREEHOURS = 'cosmo-freehours'; // weekly free hours the user has to al
 const KEY_STAMP = 'cosmo-stamp'; // logical version (ms) of the synced state, for last-write-wins
 const KEY_NAME = 'cosmo-name'; // display name (captured at sign-in)
 const KEY_AUTHSEEN = 'cosmo-authseen'; // the auth-entry flow was completed or skipped (don't show it again)
+const KEY_SYNCED = 'cosmo-synced'; // ms of the last successful cloud push/pull (for the "backed up · …" label)
+const KEY_SYNCEDSTAMP = 'cosmo-syncedstamp'; // local version (stamp) last confirmed in the cloud — drives dirty-tracking + retry
 
 const DEFAULT_REMINDER = { enabled: false, hour: 9, minute: 0 };
 
@@ -59,6 +62,8 @@ export function StoreProvider({ children }) {
   const [allMetWeek, setAllMetWeek] = useState(0); // week-start (ms) the triumph last fired for (0 = never)
   const [reminder, setReminder] = useState(DEFAULT_REMINDER); // daily local notification prefs
   const [session, setSession] = useState(null); // Supabase auth session (null = signed out / offline-only)
+  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
+  const [lastSyncedAt, setLastSyncedAt] = useState(0);  // ms of last successful cloud push/pull
   const [backupOpen, setBackupOpen] = useState(false); // cloud-backup (email-OTP) sheet
   const [userName, setUserNameState] = useState(''); // display name (captured at sign-in)
   const [authSeen, setAuthSeen] = useState(false); // auth-entry flow completed or skipped
@@ -70,6 +75,9 @@ export function StoreProvider({ children }) {
   const pendingRef = useRef(null); // latest snapshot awaiting a debounced push
   const pushTimerRef = useRef(null);
   const syncInitRef = useRef(false); // skip the first post-hydration settle so it isn't counted as a change
+  const syncedStampRef = useRef(0); // local version last CONFIRMED in the cloud (dirty when stampRef > this)
+  const retryAttemptRef = useRef(0); // exponential-backoff counter for failed pushes
+  const flushingRef = useRef(false); // a push is in flight (prevents concurrent/overlapping pushes)
 
   // hydrate persisted prefs + the mutable domain state. storage.getItem logs and
   // returns null on a failed read (never rejects), so a read error degrades to
@@ -94,6 +102,8 @@ export function StoreProvider({ children }) {
       if (as === '1') setAuthSeen(true);
       const stampNum = Number(await storage.getItem(KEY_STAMP));
       if (Number.isFinite(stampNum)) stampRef.current = stampNum;
+      { const sy = Number(await storage.getItem(KEY_SYNCED)); if (Number.isFinite(sy) && sy) setLastSyncedAt(sy); }
+      { const ss = Number(await storage.getItem(KEY_SYNCEDSTAMP)); if (Number.isFinite(ss)) syncedStampRef.current = ss; }
       const fhNum = Number(fh);
       if (fh != null && Number.isFinite(fhNum)) {
         setFreeHoursState(Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, fhNum)));
@@ -204,8 +214,13 @@ export function StoreProvider({ children }) {
     if (Array.isArray(snap.identities) && snap.identities.length) setIdentities(snap.identities);
     if (Array.isArray(snap.retired)) setRetired(snap.retired);
     if (snap.relax) setRelax(snap.relax);
-    if (Array.isArray(snap.sessions)) setSessions(snap.sessions);
-    if (snap.planHistory && typeof snap.planHistory === 'object') setPlanHistory(snap.planHistory);
+    // sessions are append-only → UNION local + remote so a session logged on
+    // either device survives the restore (never a wholesale overwrite). The
+    // merged set is pushed straight back by the change-watch effect, so the
+    // cloud converges to the union too.
+    if (Array.isArray(snap.sessions)) setSessions((local) => mergeSessions(local, snap.sessions));
+    // plan history: union the weeks both sides know about (remote wins a same-week conflict)
+    if (snap.planHistory && typeof snap.planHistory === 'object') setPlanHistory((local) => ({ ...local, ...snap.planHistory }));
     if (snap.theme === 'light' || snap.theme === 'dark') { setThemeName(snap.theme); storage.setItem(KEY_THEME, snap.theme); }
     if (snap.form === 'orbit' || snap.form === 'constellation') { setFormState(snap.form); storage.setItem(KEY_FORM, snap.form); }
     if (typeof snap.freeHours === 'number') { setFreeHoursState(snap.freeHours); storage.setItem(KEY_FREEHOURS, String(snap.freeHours)); }
@@ -218,13 +233,52 @@ export function StoreProvider({ children }) {
     storage.setItem(KEY_STAMP, String(stampRef.current));
   };
 
+  // record a successful round-trip — drives the "Backed up · 2m ago" label
+  const markSynced = () => {
+    const now = Date.now();
+    setSyncStatus('synced');
+    setLastSyncedAt(now);
+    storage.setItem(KEY_SYNCED, String(now));
+  };
+
+  const RETRY_BASE = 4000; // ms — first backoff delay after a failed push
+  const RETRY_MAX = 60000; // ms — backoff cap
+
+  // The single push path. Debounced/retried via one timer. Pushes the latest
+  // snapshot only if local is ahead of what the cloud has confirmed; on failure
+  // it reschedules itself with exponential backoff (durable retry) instead of
+  // waiting for the next edit. `delay` 0 = flush now (foreground/reconnect).
   const schedulePush = (delay = 900) => {
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
-    pushTimerRef.current = setTimeout(() => {
+    pushTimerRef.current = setTimeout(async () => {
+      pushTimerRef.current = null;
       const uid = sessionRef.current && sessionRef.current.user && sessionRef.current.user.id;
-      if (uid && pendingRef.current) sync.pushState(uid, pendingRef.current);
+      if (!uid) return;
+      if (flushingRef.current) { schedulePush(500); return; } // a push is already in flight — try again shortly
+      const snap = pendingRef.current;
+      if (!snap || (snap.updatedAt || 0) <= syncedStampRef.current) { if (!isDirty()) setSyncStatus('synced'); return; } // already in the cloud
+      flushingRef.current = true;
+      setSyncStatus('syncing');
+      const ok = await sync.pushState(uid, snap);
+      flushingRef.current = false;
+      if (ok) {
+        syncedStampRef.current = snap.updatedAt || Date.now();
+        storage.setItem(KEY_SYNCEDSTAMP, String(syncedStampRef.current));
+        retryAttemptRef.current = 0;
+        markSynced();
+        // edits landed during the push → we're dirty again; flush once more
+        if ((stampRef.current || 0) > syncedStampRef.current) schedulePush(300);
+      } else {
+        setSyncStatus('error'); // surfaced in the UI
+        const backoff = Math.min(RETRY_MAX, RETRY_BASE * 2 ** retryAttemptRef.current);
+        retryAttemptRef.current += 1;
+        schedulePush(backoff); // keep trying without waiting for another edit
+      }
     }, delay);
   };
+
+  // true when local has changes the cloud hasn't confirmed yet
+  const isDirty = () => (stampRef.current || 0) > syncedStampRef.current;
 
   // bump the version + queue a debounced push whenever any synced state changes.
   // skip the first settle after hydration (it's the load, not a user edit).
@@ -241,21 +295,40 @@ export function StoreProvider({ children }) {
   // on sign-in (and on launch if already signed in): pull, then restore-or-back-up.
   useEffect(() => {
     const uid = session && session.user && session.user.id;
-    if (!hydrated || !uid) return;
+    if (!hydrated) return undefined;
+    if (!uid) { setSyncStatus('idle'); return undefined; } // signed out → offline-only
     let cancelled = false;
     (async () => {
+      setSyncStatus('syncing');
       const remote = await sync.pullState(uid);
       if (cancelled) return;
       if (remote && (remote.updatedAt || 0) > stampRef.current) {
-        applyRemote(remote); // cloud is newer → restore
+        applyRemote(remote); // cloud is newer → restore (sessions/plan history are merged, not overwritten)
+        syncedStampRef.current = remote.updatedAt || Date.now();
+        storage.setItem(KEY_SYNCEDSTAMP, String(syncedStampRef.current));
+        markSynced();
       } else {
-        pendingRef.current = buildSnapshot(); // local is newer / no remote → back it up
-        sync.pushState(uid, pendingRef.current);
+        // local is newer / no remote → back it up via the retrying push path
+        pendingRef.current = buildSnapshot();
+        schedulePush(0);
       }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, session]);
+
+  // Flush pending changes when the app returns to the foreground — a stand-in
+  // for "the network came back" without a NetInfo dependency. Catches the case
+  // where a push failed while backgrounded/offline: if signed in and dirty, push
+  // now (schedulePush no-ops when already in sync).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      const uid = sessionRef.current && sessionRef.current.user && sessionRef.current.user.id;
+      if (s === 'active' && uid && isDirty()) schedulePush(0);
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // ======================================================================
 
   // Single transient toast with one shared timer: clear any pending dismissal
@@ -618,6 +691,8 @@ export function StoreProvider({ children }) {
       setFreeHours,
       setRelaxAllowance,
       session,
+      syncStatus,
+      lastSyncedAt,
       backupOpen,
       openBackup,
       closeBackup,
@@ -642,7 +717,7 @@ export function StoreProvider({ children }) {
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
       focusCosmos, clearCosmos, detail, openDetail, closeDetail, review, openReview, closeReview, commitReview,
       celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, freeHours, setFreeHours, setRelaxAllowance,
-      session, backupOpen, openBackup, closeBackup, signOut, userName, setUserName, authSeen, markAuthSeen,
+      session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, userName, setUserName, authSeen, markAuthSeen,
       setDesired, seedOnboarding, enter, restart, toast,
     ]
   );
