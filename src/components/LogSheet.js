@@ -6,6 +6,7 @@ import { useStore, useTheme } from '../store/Store';
 import { Glyph, Button, Chip } from './primitives';
 import Icon from './Icon';
 import MinuteDial from './MinuteDial';
+import { noteSuggestions } from '../data/data';
 import { BREAKPOINT, SPACING } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
@@ -185,7 +186,7 @@ export default function LogSheet() {
               <TextInput
                 value={note}
                 onChangeText={setNote}
-                placeholder="A line about how it went…"
+                placeholder={`e.g. ${noteSuggestions(sel)[0]}…`}
                 placeholderTextColor={t.inkFaint}
                 maxLength={140}
                 returnKeyType="done"
@@ -199,9 +200,25 @@ export default function LogSheet() {
                   fontFamily: sans(500),
                   color: t.ink,
                   backgroundColor: t.surface,
-                  marginBottom: 14,
+                  marginBottom: 12,
                 }}
               />
+
+              {/* per-hobby starter lines — one tap to fill, still fully editable */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+                {noteSuggestions(sel).map((s) => {
+                  const on = note.trim() === s;
+                  return (
+                    <Pressable
+                      key={s}
+                      onPress={() => setNote(s)}
+                      style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: on ? colorsFor(sel).color : t.line, backgroundColor: on ? colorsFor(sel).soft : t.surface2 }}
+                    >
+                      <Text style={{ fontSize: 13, fontFamily: sans(600), color: on ? colorsFor(sel).color : t.inkSoft }}>{s}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
               {/* mark this note as a milestone — only meaningful with a note */}
               <Pressable

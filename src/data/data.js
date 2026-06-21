@@ -107,6 +107,35 @@ export const RELAX = {
 export const USUAL_MINS = { writer: 45, reader: 30, engineer: 60, musician: 40, painter: 35, relax: 30 };
 export const usualMins = (idn) => (idn && idn.usualMins) || (idn && USUAL_MINS[idn.id]) || 30;
 
+// Per-hobby starter lines for the optional log note (one tap to fill, fully
+// editable). Keyed by identity id — canonical personas + the rest of the
+// onboarding catalog. Unknown/runtime identities fall back to GENERIC.
+export const NOTE_SUGGESTIONS = {
+  writer: ['Morning pages', 'Drafted a new scene', 'Edited a chapter', 'Finished short story'],
+  reader: ['Read 4 chapters', 'Started Jane Eyre', 'Trying a new genre'],
+  engineer: ['Developed a new feature', 'Cracked a hard bug', 'Refactored a mess'],
+  musician: ['Practiced scales', 'Learned a new piece', 'The bridge finally clicked'],
+  painter: ['Color study', 'Sketched from life', 'Finished a piece'],
+  artist: ['Color study', 'Sketched from life', 'Finished a piece'],
+  journaler: ['Cleared my head', 'A page before bed'],
+  poet: ['A new poem', 'Found the right line'],
+  athlete: ['Ran a mile', 'Hit a new PR', 'Tough but worth it'],
+  chef: ['Made a perfect crepe', 'Tried a new recipe', 'Nailed the sauce'],
+  photographer: ['Golden hour walk', 'Caught a good frame'],
+  gardener: ['Pruned and weeded', 'New seedlings in'],
+  linguist: ['Reviewed vocab', 'Held a real conversation'],
+  designer: ['Explored layouts', 'Found the right type'],
+  filmmaker: ['Edited a cut', 'Storyboarded a scene'],
+  dancer: ['Practiced the combo', 'Looser today'],
+  naturalist: ['A long trail', 'Spotted something new'],
+  relax: ['Rested well', 'Fully unwound', 'Watched a comfort show'],
+};
+export const GENERIC_NOTE_SUGGESTIONS = ['Showed up today', 'Made real progress', 'A good session'];
+export function noteSuggestions(idn) {
+  if (!idn) return GENERIC_NOTE_SUGGESTIONS;
+  return NOTE_SUGGESTIONS[idn.id] || GENERIC_NOTE_SUGGESTIONS;
+}
+
 // Weekly free-hours model — the hours a typical week holds for the user. Single
 // source of truth shared by onboarding's cadence slider and the weekly re-plan
 // sheet, so the "% → real hours" math stays consistent across both.

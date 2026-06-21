@@ -68,7 +68,6 @@ export default function IdentityDetail({
 }) {
   const { t, colorsFor } = useTheme();
   const { identities, sessions, planHistory, journal, openLog, retireIdentity, form } = useStore();
-  const fieldNotes = (journal || []).filter((e) => e.identityId === identity.id);
   const pad = useScreenPad();
 
   // Resolve the live identity from the store (by id) so the screen reflects
@@ -77,6 +76,7 @@ export default function IdentityDetail({
   const base = identityProp || IDENTITIES.find((i) => i.id === 'painter') || IDENTITIES[0];
   const identity = identities.find((i) => i.id === base.id) || base;
   const c = colorsFor(identity);
+  const fieldNotes = (journal || []).filter((e) => e.identityId === identity.id);
 
   const confirmRetire = () =>
     Alert.alert(
