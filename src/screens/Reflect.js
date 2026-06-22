@@ -10,6 +10,7 @@ import Icon from '../components/Icon';
 import AlignmentRing from '../components/AlignmentRing';
 import PastWeeks from '../weekly/PastWeeks';
 import ActivityTracker from '../weekly/ActivityTracker';
+import RhythmStrip from '../components/RhythmStrip';
 import { weekSummary, lastWeekTrend, focusIdentities } from '../lib/coach';
 import { useScreenPad } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
@@ -77,6 +78,9 @@ export default function Reflect() {
           </Text>
         </View>
       </Card>
+
+      {/* rhythm — the tolerant 5-of-7 check-in streak: are you showing up at all? */}
+      <RhythmStrip />
 
       {/* per-week breakdown — plan vs lived */}
       <View style={{ marginTop: 26 }}>

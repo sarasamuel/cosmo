@@ -141,6 +141,7 @@ export default function ScheduleFlow() {
   if (mode === 'result' && plan) {
     const sum = scheduleSummary(plan);
     const restNote = sum.restDay ? `, with ${sum.restDay} kept clear` : '';
+    const todayDow = new Date().getDay(); // live "today", not a flag frozen at arrange time
     return (
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad, paddingTop: 6, paddingBottom: 10 }}>
@@ -174,7 +175,7 @@ export default function ScheduleFlow() {
             {plan.map((d, dayIdx) => (
               <View key={dayIdx} style={{ flexDirection: 'row', gap: 14 }}>
                 <View style={{ width: 44, paddingTop: 2 }}>
-                  <Text style={{ fontSize: 13, fontFamily: sans(700), color: d.today ? t.ink : t.inkSoft }}>{d.day}</Text>
+                  <Text style={{ fontSize: 13, fontFamily: sans(700), color: d.dowIndex === todayDow ? t.ink : t.inkSoft }}>{d.day}</Text>
                   <Text style={{ fontSize: 11.5, fontFamily: sans(600), color: t.inkFaint }}>{d.date.split(' ')[1]}</Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0, gap: 8 }}>

@@ -1,7 +1,7 @@
 import {
   mergeSessions, newSessionId, fmtAgo, SESSION_POINTS, alignment,
   weekStartMs, lastWeekStartMs, inWeek, weekPoints,
-  planForWeek, pastWeeks, recentWeeksFor, daysSinceLast, dayStreak,
+  planForWeek, pastWeeks, recentWeeksFor, daysSinceLast, dayStreak, rhythmStreak,
 } from './data';
 
 const DAY = 86400000;
@@ -117,6 +117,40 @@ describe('plan history (planForWeek / pastWeeks / recentWeeksFor)', () => {
   test('empty for a fresh user with no sessions', () => {
     expect(pastWeeks([], [idn('eng', 30)], {})).toEqual([]);
     expect(recentWeeksFor([], idn('eng', 30), {})).toEqual([]);
+  });
+});
+
+describe('rhythmStreak (check-in streak)', () => {
+  const mid = (ws, k) => { const d = new Date(ws); d.setDate(d.getDate() + k); d.setHours(12, 0, 0, 0); return d.getTime(); };
+
+  test('a day with ANY session is "in"; 7 states + 6 weeks of history', () => {
+    const ws = weekStartMs();
+    const sessions = [0, 1, 2, 3, 4].map((k) => ({ id: 'w', ts: mid(ws, k), mins: 30 }));
+    const r = rhythmStreak(sessions);
+    expect(r.current).toHaveLength(7);
+    expect(r.current.filter((d) => d === 'in').length).toBe(5);
+    expect(r.history).toHaveLength(6);
+    expect(r.threshold).toBe(5);
+  });
+
+  test('counts kept weeks (current + completed) and never penalizes misses', () => {
+    const ws = weekStartMs();
+    const lastWs = weekStartMs(ws - 1);
+    const sessions = [
+      ...[0, 1, 2, 3, 4].map((k) => ({ id: 'w', ts: mid(ws, k), mins: 30 })),     // this week kept
+      ...[0, 1, 2, 3, 4].map((k) => ({ id: 'r', ts: mid(lastWs, k), mins: 30 })), // last week kept
+    ];
+    const r = rhythmStreak(sessions);
+    expect(r.history[0].days.filter((d) => d === 'in').length).toBe(5);
+    expect(r.weeks).toBe(2);
+    expect(typeof r.since).toBe('string');
+  });
+
+  test('no sessions → finding rhythm (0 weeks), no errors, no "in" days', () => {
+    const r = rhythmStreak([]);
+    expect(r.weeks).toBe(0);
+    expect(r.since).toBeNull();
+    expect(r.current.some((d) => d === 'in')).toBe(false);
   });
 });
 

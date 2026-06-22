@@ -46,7 +46,8 @@ function dowCounts(sessions, id) {
 }
 
 /* The engine. Returns PLAN: 7 day rows
-   [{ day, date, dow, dowIndex, today, rest, sessions: [{ identityId, label, window, hour, time, mins }] }]. */
+   [{ day, date, dowIndex, rest, sessions: [{ identityId, label, window, hour, time, mins }] }].
+   No "today" — renderers derive it live (the plan is persisted, so a stored flag would go stale). */
 export function scheduleWeek(constraints, ctx = {}) {
   const c = constraints || {};
   const all = ctx.identities || [];
@@ -58,15 +59,15 @@ export function scheduleWeek(constraints, ctx = {}) {
   const chosenIds = (c.identities && c.identities.length) ? c.identities : all.filter((i) => i.desired > 0).map((i) => i.id);
   const targets = chosenIds.map((id) => all.find((i) => i.id === id)).filter(Boolean);
 
-  // build the empty week first so we always return 7 days
+  // build the empty week first so we always return 7 days. We deliberately DON'T
+  // stamp a "today" flag — the plan is persisted, so a frozen flag would go stale
+  // as days pass. Renderers derive "today" live from the system clock via dowIndex.
   const days = Array.from({ length: 7 }, (_, k) => {
     const d = new Date(weekStart + k * DAY_MS);
-    const dnow = new Date(now); dnow.setHours(0, 0, 0, 0);
     return {
       day: DOW[d.getDay()],
       dowIndex: d.getDay(),
       date: `${MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}`,
-      today: d.getFullYear() === dnow.getFullYear() && d.getMonth() === dnow.getMonth() && d.getDate() === dnow.getDate(),
       rest: false,
       sessions: [],
     };

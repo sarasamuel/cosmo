@@ -15,8 +15,11 @@ const DAY_W = 24;
 export default function ActivityTracker() {
   const { t, colorsFor } = useTheme();
   const { identities, sessions } = useStore();
-  // current month, derived live from real session timestamps
-  const month = useMemo(() => monthActivity(sessions), [sessions]);
+  // current month, derived live from real session timestamps. `todayKey` is in
+  // the deps so the highlighted "today" dot refreshes when the date rolls over
+  // (not just when sessions change), even if the app stays open across midnight.
+  const todayKey = new Date().toDateString();
+  const month = useMemo(() => monthActivity(sessions), [sessions, todayKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const done = (id) => month.done[id] || [];
   const days = Array.from({ length: month.days }, (_, i) => i + 1);
 

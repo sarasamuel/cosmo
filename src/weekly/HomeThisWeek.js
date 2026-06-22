@@ -20,7 +20,12 @@ export default function HomeThisWeek() {
   // ---- committed schedule → the "This week" surface ----
   if (schedule && Array.isArray(schedule.plan)) {
     const plan = schedule.plan;
-    const today = plan.find((d) => d.today);
+    // "today" is computed LIVE from the system clock (by day-of-week), not the
+    // flag frozen into the plan when it was arranged — so it stays correct as the
+    // days pass within the week.
+    const todayDow = new Date().getDay();
+    const isToday = (d) => d.dowIndex === todayDow;
+    const today = plan.find(isToday);
     return (
       <Card style={{ marginTop: 18, paddingHorizontal: 22, paddingVertical: 20 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -35,8 +40,8 @@ export default function HomeThisWeek() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           {plan.map((d, i) => (
             <View key={i} style={{ alignItems: 'center', gap: 7, flex: 1 }}>
-              <Text style={{ fontSize: 11.5, fontFamily: sans(700), color: d.today ? t.ink : t.inkFaint }}>{d.day[0]}</Text>
-              <View style={{ width: 30, height: 46, borderRadius: 9, alignItems: 'center', justifyContent: 'center', gap: 3, backgroundColor: d.today ? t.surface3 : 'transparent', borderWidth: d.today ? 0 : 0 }}>
+              <Text style={{ fontSize: 11.5, fontFamily: sans(700), color: isToday(d) ? t.ink : t.inkFaint }}>{d.day[0]}</Text>
+              <View style={{ width: 30, height: 46, borderRadius: 9, alignItems: 'center', justifyContent: 'center', gap: 3, backgroundColor: isToday(d) ? t.surface3 : 'transparent' }}>
                 {d.rest ? (
                   <Icon name="moon" size={14} stroke={2} color={t.inkFaint} />
                 ) : (

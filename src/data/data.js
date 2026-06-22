@@ -321,6 +321,54 @@ export function lastWeekStartMs() {
   return weekStartMs(weekStartMs() - 1); // 1ms before this week's start lands in last week
 }
 
+// friendly "early/mid/late {Month}" phrase from a date — for "in rhythm since …"
+function sincePhrase(ms) {
+  const d = new Date(ms);
+  const part = d.getDate() <= 10 ? 'early' : d.getDate() <= 20 ? 'mid' : 'late';
+  return `${part} ${MONTH_NAMES[d.getMonth()]}`;
+}
+
+// Rhythm check-in STREAK — the tolerant "are you showing up at all?" view. A day
+// is `in` if ANY session was logged that day, `out` if a past day was missed
+// (never penalized), `today` (until it's tended), or `future`. A week is "kept"
+// at >= `threshold` in-days; an in-progress current week never breaks the streak.
+// Fully derived from real sessions. Returns
+// { threshold, weeks, since, current: [7 states], history: [{ start, label, days:[7] }] }.
+export function rhythmStreak(sessions, opts = {}) {
+  const threshold = opts.threshold || 5;
+  const historyWeeks = opts.historyWeeks || 6;
+  const now = opts.now || Date.now();
+  const mid = (ts) => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const todayMid = mid(now);
+  const has = new Set();
+  (sessions || []).forEach((s) => { if (s && s.ts) has.add(mid(s.ts)); });
+
+  const states = (wsStart) => Array.from({ length: 7 }, (_, k) => {
+    const d = new Date(wsStart); d.setDate(d.getDate() + k); d.setHours(0, 0, 0, 0);
+    const tm = d.getTime();
+    if (has.has(tm)) return 'in';
+    if (tm === todayMid) return 'today';
+    if (tm > todayMid) return 'future';
+    return 'out';
+  });
+  const inCount = (days) => days.filter((x) => x === 'in').length;
+
+  const curStart = weekStartMs(now);
+  const current = states(curStart);
+
+  const history = [];
+  let cursor = weekStartMs(curStart - 1);
+  for (let k = 0; k < historyWeeks; k += 1) { history.push({ start: cursor, label: weekLabel(cursor), days: states(cursor) }); cursor = weekStartMs(cursor - 1); }
+
+  // consecutive recent COMPLETED weeks kept, + this week if it's already secured
+  let m = 0;
+  for (const w of history) { if (inCount(w.days) >= threshold) m += 1; else break; }
+  const currentKept = inCount(current) >= threshold;
+  const weeks = m + (currentKept ? 1 : 0);
+  const earliest = m > 0 ? history[m - 1].start : (currentKept ? curStart : null);
+  return { threshold, weeks, since: earliest ? sincePhrase(earliest) : null, current, history };
+}
+
 // Real weekly history, newest first — one entry per COMPLETED week (before this
 // one) in which *any* active identity logged a session. Each entry matches the
 // shape the weekly UI expects: { label, aligned, rows: [{ id, plan, actual }] }.
