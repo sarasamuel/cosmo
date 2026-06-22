@@ -36,6 +36,18 @@ export function clockLabel(h) {
   return `${hr}:00 ${ap}`;
 }
 
+// Re-stamp a persisted plan's day labels/dates onto a different week. A plan is
+// day-of-week indexed (row k = the k-th day from weekStart, dowIndex k), so the
+// same weekly pattern carries forward to new calendar dates — only the display
+// fields (day/dowIndex/date) change; the sessions are untouched. Used to persist
+// last week's arrangement into a week the user hasn't re-arranged.
+export function rollPlanForward(plan, weekStart) {
+  return (plan || []).map((row, k) => {
+    const d = new Date(weekStart + k * DAY_MS);
+    return { ...row, day: DOW[d.getDay()], dowIndex: d.getDay(), date: `${MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}` };
+  });
+}
+
 // per-day-of-week counts of this identity's past sessions (the logged rhythm)
 function dowCounts(sessions, id) {
   const c = [0, 0, 0, 0, 0, 0, 0];

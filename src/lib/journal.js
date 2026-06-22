@@ -90,20 +90,28 @@ export function autoMilestones(identities, sessions, opts = {}) {
     }
   });
 
-  // intention met this week (per identity, and the whole-week gold)
+  // intention met this week (per identity, and the whole-week gold). These are
+  // dated by WHEN they were earned — the latest session that tended the identity
+  // this week — not render-time `now`, so they sort into the timeline at the
+  // moment of achievement instead of perpetually pinning to the top.
   const ws = weekStartMs(now);
+  const lastInWeek = {}; // id -> max session ts this week (asc ⇒ last write wins)
+  asc.forEach((s) => { if (s.ts >= ws) lastInWeek[s.id] = s.ts; });
   const tracked = list.filter((i) => i.desired > 0);
   tracked.forEach((idn) => {
     const lived = Math.min(60, weekPoints(sessions, idn.id, ws));
     if (lived >= idn.desired) {
       out.push({
-        key: `intention-${ws}-${idn.id}`, identityId: idn.id, ts: now, date: 'This week',
+        key: `intention-${ws}-${idn.id}`, identityId: idn.id, ts: lastInWeek[idn.id] || now, date: 'This week',
         title: `${idn.name} reached its intention`, sub: `${idn.desired}% intended, ${lived}% lived this week.`,
       });
     }
   });
   if (tracked.length > 1 && tracked.every((idn) => Math.min(60, weekPoints(sessions, idn.id, ws)) >= idn.desired)) {
-    out.push({ key: `allmet-${ws}`, gold: true, ts: now + 1, date: 'This week', title: 'Every intention, met', sub: 'A whole week in balance.' });
+    // earned the moment the last-tended identity crossed; +1 keeps the whole-week
+    // gold just above the individual intention met at that same instant.
+    const allTs = Math.max(0, ...tracked.map((idn) => lastInWeek[idn.id] || 0));
+    out.push({ key: `allmet-${ws}`, gold: true, ts: (allTs || now) + 1, date: 'This week', title: 'Every intention, met', sub: 'A whole week in balance.' });
   }
 
   // anniversaries since joining (falls back to the earliest session)
@@ -133,10 +141,15 @@ export function buildFeed({ entries, autoMs, coachNote, insights, now }) {
   const t = now || Date.now();
   const user = (entries || []).map((e) => ({ ...e, kind: e.type === 'milestone' ? 'milestone' : 'note' }));
   const auto = (autoMs || []).map((m) => ({ ...m, kind: 'auto' }));
+  // Cosmo's advisory rows (the weekly note + any observations) are about THIS
+  // week, so anchor them to the week's start rather than render-time `now`. That
+  // keeps the user's genuinely most-recent note/milestone at the top instead of
+  // a Cosmo row perpetually pinning above it.
+  const ws = weekStartMs(t);
   const cosmo = [];
-  if (coachNote) cosmo.push({ kind: 'cosmo', ts: t - 100, text: coachNote });
+  if (coachNote) cosmo.push({ kind: 'cosmo', ts: ws + 1, text: coachNote });
   (insights || []).forEach((ins, i) => {
-    cosmo.push({ kind: 'cosmo', identityId: ins.id, ts: t - 200 - i, text: ins.body ? `${ins.title}. ${ins.body}` : ins.title });
+    cosmo.push({ kind: 'cosmo', identityId: ins.id, ts: ws - i, text: ins.body ? `${ins.title}. ${ins.body}` : ins.title });
   });
   return [...user, ...auto, ...cosmo].sort((a, b) => (b.ts || 0) - (a.ts || 0));
 }
