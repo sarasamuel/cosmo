@@ -1,7 +1,8 @@
-/* Onboarding flow (6 steps): welcome → choose identities → cadence → rest
-   allowance → allocate → reveal. Rendered while onboarding is incomplete. On
-   completion it carries free hours + rest allowance into the store and flips the
-   persisted `started` flag. */
+/* Onboarding flow (7 steps): welcome → choose identities → cadence → rest
+   allowance → allocate → reveal → notification opt-in. Rendered while onboarding
+   is incomplete. On completion it carries free hours + rest allowance into the
+   store, optionally enables the nightly reminder, and flips the persisted
+   `started` flag. */
 import React, { useState, useMemo } from 'react';
 import { View, Text, ScrollView, TextInput, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,7 +46,7 @@ function WelcomeConstellation() {
 
 export default function Onboarding() {
   const { t } = useTheme();
-  const { enter, form, setForm, setFreeHours: persistFreeHours, setRelaxAllowance, seedOnboarding, userName } = useStore();
+  const { enter, form, setForm, setFreeHours: persistFreeHours, setRelaxAllowance, seedOnboarding, setReminderTime, userName } = useStore();
   const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState(0);
@@ -84,6 +85,16 @@ export default function Onboarding() {
   };
   const next = () => setStep((s) => s + 1);
 
+  // carry the chosen identities, free hours + rest allowance into the app,
+  // starting with no logged time (seedOnboarding clears the demo sessions) so
+  // nothing reads as already-lived, then flip the persisted `started` flag.
+  const finalize = () => {
+    seedOnboarding(builtIdentities);
+    persistFreeHours(freeHours);
+    setRelaxAllowance(restPct);
+    enter();
+  };
+
   const customSelected = selected.filter((n) => !CATALOG.includes(n));
 
   return (
@@ -104,7 +115,7 @@ export default function Onboarding() {
               <Text style={{ fontFamily: serif(500, true) }}>to-do list.</Text>
             </Text>
             <Text style={{ fontSize: 18, lineHeight: 28, color: t.inkSoft, textAlign: 'center', maxWidth: 460 }}>
-              Cosmo helps you spend your hours on the people you most want to become — not the tasks that happen to be loudest.
+              Cosmo helps you spend your hours on the person you most want to become, not the tasks that happen to be loudest.
             </Text>
             <Button onPress={next} style={{ marginTop: 44, paddingHorizontal: 48 }}>
               Begin
@@ -232,27 +243,41 @@ export default function Onboarding() {
                 <CosmosViz identities={builtIdentities} allowLog={false} interactive={false} name={userName} />
               )}
             </View>
-            <Button
-              onPress={() => {
-                // carry the chosen identities, free hours + rest allowance into the
-                // app, starting with no logged time (seedOnboarding clears the demo
-                // sessions) so nothing reads as already-lived.
-                seedOnboarding(builtIdentities);
-                persistFreeHours(freeHours);
-                setRelaxAllowance(restPct);
-                enter();
-              }}
-              style={{ paddingHorizontal: 48 }}
-            >
-              Enter Cosmos
+            <Button onPress={next} style={{ paddingHorizontal: 48 }}>
+              Continue
             </Button>
+          </View>
+        )}
+
+        {/* STEP 6 — gentle notification opt-in (the daily return nudge) */}
+        {step === 6 && (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: t.id.relax.color, alignItems: 'center', justifyContent: 'center', marginBottom: 30 }}>
+              <Icon name="bell" size={34} stroke={1.8} color="#fff" />
+            </View>
+            <Eyebrow style={{ marginBottom: 16 }}>One last thing</Eyebrow>
+            <Text style={{ fontFamily: serif(500), fontSize: 32, color: t.ink, marginBottom: 14, textAlign: 'center' }}>A gentle nudge each evening?</Text>
+            <Text style={{ fontSize: 16.5, lineHeight: 26, color: t.inkSoft, textAlign: 'center', maxWidth: 440 }}>
+              Cosmo can send one quiet check-in a day — a moment to log what you tended to. No streaks to break, no guilt if you miss it. You can change the time or turn it off any time in Settings.
+            </Text>
+            <View style={{ alignSelf: 'stretch', paddingHorizontal: 8, marginTop: 32 }}>
+              {/* setReminderTime requests OS permission and schedules the 8pm nightly;
+                  it reverts to off on its own if permission is denied. Either way we
+                  finalize and enter the app. */}
+              <Button onPress={() => { setReminderTime(20, 0); finalize(); }} style={{ paddingHorizontal: 48 }}>
+                Enable evening reminders
+              </Button>
+              <Button variant="ghost" onPress={finalize} style={{ marginTop: 8 }}>
+                Not now
+              </Button>
+            </View>
           </View>
         )}
       </ScrollView>
 
       {/* progress dots */}
       <View style={{ paddingTop: 14, paddingBottom: 20 + insets.bottom, flexDirection: 'row', gap: 7, justifyContent: 'center' }}>
-        {[0, 1, 2, 3, 4, 5].map((i) => (
+        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
           <View
             key={i}
             style={{
