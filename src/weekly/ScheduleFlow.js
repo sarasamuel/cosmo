@@ -10,7 +10,7 @@ import { Glyph, Button } from '../components/primitives';
 import Icon from '../components/Icon';
 import { useScreenPad } from '../lib/layout';
 import { fmtMins, FREE_HOURS_WEEK } from '../data/data';
-import { scheduleWeek, retimeSession, scheduleSummary } from '../lib/schedule';
+import { scheduleWeek, retimeSession, moveSessionToDay, removeSession, scheduleSummary } from '../lib/schedule';
 import { serif, sans } from '../theme/fonts';
 
 const FULLNESS = [
@@ -204,17 +204,46 @@ export default function ScheduleFlow() {
                             <Icon name="clock" size={15} stroke={2} color={c.color} />
                           </Pressable>
                           {open && (
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, marginLeft: 4 }}>
-                              <Text style={{ fontSize: 12.5, fontFamily: sans(700), color: t.inkFaint, alignSelf: 'center' }}>Move to</Text>
-                              {MOVE.map((m) => (
-                                <Pressable
-                                  key={m.v}
-                                  onPress={() => { setPlan((p) => retimeSession(p, dayIdx, sessIdx, m.v, committedConstraints)); setRetiming(null); }}
-                                  style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: t.line, backgroundColor: t.surface2 }}
-                                >
-                                  <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: t.inkSoft }}>{m.label}</Text>
-                                </Pressable>
-                              ))}
+                            <View style={{ marginTop: 10, marginLeft: 4, gap: 10 }}>
+                              {/* move to a different day */}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                                <Text style={{ width: 40, fontSize: 12, fontFamily: sans(700), color: t.inkFaint }}>Day</Text>
+                                {plan.map((dd, di) => {
+                                  const cur = di === dayIdx;
+                                  const disabled = dd.rest;
+                                  return (
+                                    <Pressable
+                                      key={di}
+                                      disabled={disabled || cur}
+                                      onPress={() => { setPlan((p) => moveSessionToDay(p, dayIdx, sessIdx, di, committedConstraints)); setRetiming(null); }}
+                                      style={{ width: 34, paddingVertical: 8, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: cur ? c.color : t.line, backgroundColor: cur ? c.soft : t.surface2, opacity: disabled ? 0.35 : 1 }}
+                                    >
+                                      <Text style={{ fontSize: 12, fontFamily: sans(700), color: cur ? c.color : t.inkSoft }}>{dd.day.slice(0, 2)}</Text>
+                                    </Pressable>
+                                  );
+                                })}
+                              </View>
+                              {/* change time of day */}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                                <Text style={{ width: 40, fontSize: 12, fontFamily: sans(700), color: t.inkFaint }}>Time</Text>
+                                {MOVE.map((m) => (
+                                  <Pressable
+                                    key={m.v}
+                                    onPress={() => { setPlan((p) => retimeSession(p, dayIdx, sessIdx, m.v, committedConstraints)); setRetiming(null); }}
+                                    style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: t.line, backgroundColor: t.surface2 }}
+                                  >
+                                    <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: t.inkSoft }}>{m.label}</Text>
+                                  </Pressable>
+                                ))}
+                              </View>
+                              {/* remove from the week */}
+                              <Pressable
+                                onPress={() => { setPlan((p) => removeSession(p, dayIdx, sessIdx)); setRetiming(null); }}
+                                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: t.line, opacity: pressed ? 0.6 : 1 })}
+                              >
+                                <Icon name="archive" size={14} stroke={1.8} color={t.warn} />
+                                <Text style={{ fontSize: 12.5, fontFamily: sans(700), color: t.warn }}>Remove from week</Text>
+                              </Pressable>
                             </View>
                           )}
                         </View>

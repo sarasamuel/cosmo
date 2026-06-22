@@ -36,18 +36,6 @@ export function clockLabel(h) {
   return `${hr}:00 ${ap}`;
 }
 
-// most common non-generic label this identity has logged, else its name
-function labelFor(sessions, idn) {
-  const counts = {};
-  (sessions || []).forEach((s) => {
-    if (s && s.id === idn.id && s.label && !/ session$/.test(s.label)) {
-      counts[s.label] = (counts[s.label] || 0) + 1;
-    }
-  });
-  const best = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
-  return best || idn.name;
-}
-
 // per-day-of-week counts of this identity's past sessions (the logged rhythm)
 function dowCounts(sessions, id) {
   const c = [0, 0, 0, 0, 0, 0, 0];
@@ -96,7 +84,9 @@ export function scheduleWeek(constraints, ctx = {}) {
   const queues = targets.map((idn) => {
     const size = c.shape === 'mix' ? usualMins(idn) : (SHAPE_MINS[c.shape] || 45);
     const count = Math.max(1, Math.round(perId[idn.id] / size));
-    return { idn, size, count, label: labelFor(sessions, idn), dow: dowCounts(sessions, idn) };
+    // the scheduled session is labeled by its identity (notes/labels in this app
+    // are reflective lines, not activity names — they'd read oddly as titles).
+    return { idn, size, count, label: idn.name, dow: dowCounts(sessions, idn) };
   });
   const toPlace = [];
   let remaining = queues.reduce((s, q) => s + q.count, 0);
@@ -172,6 +162,43 @@ export function retimeSession(plan, dayIdx, sessIdx, windowKey, constraints) {
   day.sessions[sessIdx] = { ...day.sessions[sessIdx], window: windowKey, hour: win.hour, time: clockLabel(win.hour) };
   day.sessions.sort((a, b) => a.hour - b.hour);
   return next;
+}
+
+const windowAllowed = (key, protect) => {
+  if (key === 'mornings' && protect.has('calm-mornings')) return false;
+  if (key === 'evenings' && protect.has('family-evenings')) return false;
+  return true;
+};
+
+/* Move ONE session to a different DAY (the tap-to-move equivalent of dragging).
+   Picks a sensible window on the destination — keeps the current time if it's
+   allowed and free, else the first allowed/free window — honoring protect and
+   never landing on a rest day. Returns a new plan (or the same if it can't). */
+export function moveSessionToDay(plan, fromDay, sessIdx, toDay, constraints) {
+  if (fromDay === toDay) return plan;
+  const protect = new Set((constraints && constraints.protect) || []);
+  const next = plan.map((d) => ({ ...d, sessions: d.sessions.map((s) => ({ ...s })) }));
+  const src = next[fromDay];
+  const dst = next[toDay];
+  if (!src || !dst || dst.rest || !src.sessions[sessIdx]) return plan;
+  const sess = src.sessions[sessIdx];
+  const taken = new Set(dst.sessions.map((s) => s.window));
+  let win = sess.window;
+  if (!windowAllowed(win, protect) || taken.has(win)) {
+    win = ORDER.find((w) => windowAllowed(w, protect) && !taken.has(w))
+      || (windowAllowed(sess.window, protect) ? sess.window : ORDER.find((w) => windowAllowed(w, protect)));
+  }
+  if (!win) return plan;
+  const w = TIME_WINDOWS[win];
+  src.sessions.splice(sessIdx, 1);
+  dst.sessions.push({ ...sess, window: win, hour: w.hour, time: clockLabel(w.hour) });
+  dst.sessions.sort((a, b) => a.hour - b.hour);
+  return next;
+}
+
+/* Drop a session from the week entirely. Returns a new plan. */
+export function removeSession(plan, dayIdx, sessIdx) {
+  return (plan || []).map((d, i) => (i === dayIdx ? { ...d, sessions: d.sessions.filter((_, k) => k !== sessIdx) } : d));
 }
 
 /* Computed summary of a plan — every number, no interpretation. */

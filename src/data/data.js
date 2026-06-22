@@ -122,7 +122,7 @@ export const NOTE_SUGGESTIONS = {
   athlete: ['Ran a mile', 'Hit a new PR', 'Tough but worth it'],
   chef: ['Made a perfect crepe', 'Tried a new recipe', 'Nailed the sauce'],
   photographer: ['Golden hour walk', 'Caught a good frame'],
-  gardener: ['Pruned and weeded', 'New seedlings in'],
+  gardener: ['Pruned and weeded', 'New seedlings in', 'Harvested tomatoes'],
   linguist: ['Reviewed vocab', 'Held a real conversation'],
   designer: ['Explored layouts', 'Found the right type'],
   filmmaker: ['Edited a cut', 'Storyboarded a scene'],

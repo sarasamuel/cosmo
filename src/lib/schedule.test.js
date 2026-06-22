@@ -1,4 +1,4 @@
-import { scheduleWeek, retimeSession, scheduleSummary, clockLabel } from './schedule';
+import { scheduleWeek, retimeSession, moveSessionToDay, removeSession, scheduleSummary, clockLabel } from './schedule';
 
 const IDS = [
   { id: 'writer', name: 'Writer', glyph: 'W', desired: 30 },
@@ -75,6 +75,36 @@ describe('retimeSession', () => {
     const di = plan.findIndex((d) => d.sessions.length >= 1);
     const same = retimeSession(plan, di, 0, 'mornings', con({ protect: ['calm-mornings'] }));
     expect(same[di].sessions[0].window).not.toBe('mornings');
+  });
+});
+
+describe('moveSessionToDay / removeSession (tap-to-move + remove)', () => {
+  test('moves a session from one day to another (totals preserved)', () => {
+    const plan = scheduleWeek(con({ windows: ['daytime'] }), base);
+    const from = plan.findIndex((d) => d.sessions.length >= 1);
+    const to = plan.findIndex((d, i) => i !== from && !d.rest && d.dowIndex !== 0 && d.dowIndex !== 6);
+    const before = scheduleSummary(plan).sessionCount;
+    const moved = moveSessionToDay(plan, from, 0, to, con());
+    expect(moved[from].sessions.length).toBe(plan[from].sessions.length - 1);
+    expect(moved[to].sessions.length).toBe(plan[to].sessions.length + 1);
+    expect(scheduleSummary(moved).sessionCount).toBe(before); // none lost
+  });
+
+  test('refuses to move onto a protected rest day', () => {
+    const plan = scheduleWeek(con({ protect: ['rest-day'] }), base);
+    const restIdx = plan.findIndex((d) => d.rest);
+    const from = plan.findIndex((d) => d.sessions.length >= 1);
+    const moved = moveSessionToDay(plan, from, 0, restIdx, con({ protect: ['rest-day'] }));
+    expect(moved[restIdx].sessions).toHaveLength(0); // rest day stays clear
+  });
+
+  test('removeSession drops just that one session', () => {
+    const plan = scheduleWeek(con({ windows: ['daytime'] }), base);
+    const di = plan.findIndex((d) => d.sessions.length >= 1);
+    const before = scheduleSummary(plan).sessionCount;
+    const out = removeSession(plan, di, 0);
+    expect(out[di].sessions.length).toBe(plan[di].sessions.length - 1);
+    expect(scheduleSummary(out).sessionCount).toBe(before - 1);
   });
 });
 
