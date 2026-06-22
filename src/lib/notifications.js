@@ -7,6 +7,7 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
 const CHANNEL = 'daily';
+const NIGHTLY_ID = 'cosmo-nightly'; // fixed id so the nightly reminder is cancellable on its own (not via cancelAll)
 const TITLE = 'Before the day closes...';
 const BODY = 'Your evening check-in. Log a session to tend to your constellation';
 
@@ -54,8 +55,9 @@ export async function scheduleDaily(hour, minute) {
         importance: Notifications.AndroidImportance.DEFAULT,
       });
     }
-    await Notifications.cancelAllScheduledNotificationsAsync();
+    try { await Notifications.cancelScheduledNotificationAsync(NIGHTLY_ID); } catch (e) { /* none yet */ }
     await Notifications.scheduleNotificationAsync({
+      identifier: NIGHTLY_ID, // so cancelDaily() removes only this, leaving session reminders intact
       content: { title: TITLE, body: BODY },
       // TEMPORARY — fires ~5s after you toggle the reminder on
       trigger: {
@@ -73,12 +75,72 @@ export async function scheduleDaily(hour, minute) {
   }
 }
 
+const SESSION_CHANNEL = 'sessions';
+
+// Schedule a one-shot local notification at each item's Date (used for the
+// "30 minutes before a scheduled session" reminders). Each carries
+// data.kind = 'schedule' so taps aren't mistaken for the nightly review. Returns
+// the created notification ids so the caller can cancel them on re-plan — we do
+// NOT cancelAll here, so the nightly reminder is left intact.
+export async function scheduleSessionReminders(items) {
+  const ids = [];
+  try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync(SESSION_CHANNEL, {
+        name: 'Session reminders',
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+    }
+    for (const it of (items || [])) {
+      const when = it.date instanceof Date ? it.date : new Date(it.date);
+      if (!(when.getTime() > Date.now())) continue; // never schedule into the past
+      // eslint-disable-next-line no-await-in-loop
+      const id = await Notifications.scheduleNotificationAsync({
+        content: { title: it.title, body: it.body, data: { kind: 'schedule', identityId: it.identityId } },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when, channelId: SESSION_CHANNEL },
+      });
+      ids.push(id);
+    }
+    return ids;
+  } catch (e) {
+    warn('schedule-sessions', e);
+    return ids;
+  }
+}
+
+// Cancel specific scheduled notifications by id (the session reminders), leaving
+// everything else (e.g. the nightly reminder) untouched.
+export async function cancelReminders(ids) {
+  try {
+    for (const id of (ids || [])) {
+      // eslint-disable-next-line no-await-in-loop
+      try { await Notifications.cancelScheduledNotificationAsync(id); } catch (e) { /* already gone */ }
+    }
+    return true;
+  } catch (e) {
+    warn('cancel-reminders', e);
+    return false;
+  }
+}
+
 export async function cancelDaily() {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(NIGHTLY_ID); // only the nightly; session reminders untouched
+    return true;
+  } catch (e) {
+    warn('cancel', e);
+    return false;
+  }
+}
+
+// Cancel EVERYTHING Cosmo has scheduled (nightly + all session reminders). Used
+// when the master Reminders switch is turned off.
+export async function cancelAll() {
   try {
     await Notifications.cancelAllScheduledNotificationsAsync();
     return true;
   } catch (e) {
-    warn('cancel', e);
+    warn('cancel-all', e);
     return false;
   }
 }

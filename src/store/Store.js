@@ -26,6 +26,7 @@ const KEY_ALLMET = 'cosmo-allmet'; // week-start (ms) the whole-week triumph las
 const KEY_FORM = 'cosmo-form';
 const KEY_DATA = 'cosmo-data'; // mutable domain state (identities/retired/relax/sessions)
 const KEY_REMINDER = 'cosmo-reminder'; // { enabled, hour, minute } for the daily local reminder
+const KEY_REMINDERS_ON = 'cosmo-reminders-on'; // master switch for ALL Cosmo notifications (nightly + session reminders)
 const KEY_LASTNOTIF = 'cosmo-lastnotif'; // delivery stamp of the last reminder tap we opened the review for
 const KEY_FREEHOURS = 'cosmo-freehours'; // weekly free hours the user has to allocate (from onboarding / re-plan)
 const KEY_STAMP = 'cosmo-stamp'; // logical version (ms) of the synced state, for last-write-wins
@@ -37,6 +38,25 @@ const KEY_JOINED = 'cosmo-joined'; // ms of first launch (for journal anniversar
 const KEY_SCHEDULE = 'cosmo-schedule'; // this week's arranged session plan { weekStart, plan, constraints }
 
 const DEFAULT_REMINDER = { enabled: false, hour: 9, minute: 0 };
+
+// "30 minutes before each session" reminder payloads, derived from an arranged
+// plan. `weekStart` anchors day k to a real calendar date. Past times are
+// filtered downstream (scheduleSessionReminders skips them).
+function buildReminderItems(plan, weekStart, identities) {
+  const nameOf = (id) => { const i = (identities || []).find((x) => x.id === id); return i ? i.name : 'your identity'; };
+  const items = [];
+  (plan || []).forEach((d, k) => {
+    (d.sessions || []).forEach((s) => {
+      const when = new Date(weekStart);
+      when.setDate(when.getDate() + k);
+      when.setHours(s.hour, 0, 0, 0);
+      when.setMinutes(when.getMinutes() - 30);
+      const name = nameOf(s.identityId);
+      items.push({ date: when, identityId: s.identityId, title: `${name} in 30 minutes`, body: `Time to tend to ${name} — your ${s.mins}m session is coming up.` });
+    });
+  });
+  return items;
+}
 
 export function StoreProvider({ children }) {
   const [form, setFormState] = useState('orbit');
@@ -69,6 +89,7 @@ export function StoreProvider({ children }) {
   const [allMetOpen, setAllMetOpen] = useState(false); // whole-week "every intention met" celebration
   const [allMetWeek, setAllMetWeek] = useState(0); // week-start (ms) the triumph last fired for (0 = never)
   const [reminder, setReminder] = useState(DEFAULT_REMINDER); // daily local notification prefs
+  const [remindersOn, setRemindersOnState] = useState(true); // master switch for all notifications (default on)
   const [session, setSession] = useState(null); // Supabase auth session (null = signed out / offline-only)
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
   const [lastSyncedAt, setLastSyncedAt] = useState(0);  // ms of last successful cloud push/pull
@@ -115,6 +136,7 @@ export function StoreProvider({ children }) {
       { const ss = Number(await storage.getItem(KEY_SYNCEDSTAMP)); if (Number.isFinite(ss)) syncedStampRef.current = ss; }
       { const jn = Number(await storage.getItem(KEY_JOINED)); if (Number.isFinite(jn) && jn) { setJoinedAt(jn); } else { const t0 = Date.now(); setJoinedAt(t0); storage.setItem(KEY_JOINED, String(t0)); } }
       { const sc = await storage.getItem(KEY_SCHEDULE); if (sc) { try { const p = JSON.parse(sc); if (p && p.weekStart && Array.isArray(p.plan)) setScheduleData(p); } catch (e) { /* corrupt → ignore */ } } }
+      { const ro = await storage.getItem(KEY_REMINDERS_ON); if (ro === '0') setRemindersOnState(false); }
       const fhNum = Number(fh);
       if (fh != null && Number.isFinite(fhNum)) {
         setFreeHoursState(Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, fhNum)));
@@ -158,13 +180,14 @@ export function StoreProvider({ children }) {
   // the listener; a cold launch-by-tap comes through getInitialResponse. The
   // latter can return a *cached* response on later launches, so we dedupe by the
   // notification's delivery time — a new day's tap has a new stamp and reopens,
-  // a stale one doesn't. We only schedule our own notification, so any response
-  // is the reminder.
+  // a stale one doesn't. Session-reminder taps (data.kind === 'schedule') are NOT
+  // the nightly review, so they don't open it.
+  const isScheduleTap = (resp) => resp?.notification?.request?.content?.data?.kind === 'schedule';
   useEffect(() => {
-    const unsub = notifications.addResponseListener(() => setReview(true));
+    const unsub = notifications.addResponseListener((resp) => { if (!isScheduleTap(resp)) setReview(true); });
     (async () => {
       const resp = await notifications.getInitialResponse();
-      if (!resp) return;
+      if (!resp || isScheduleTap(resp)) return;
       const stamp = String((resp.notification && resp.notification.date) || '');
       if (stamp) {
         const seen = await storage.getItem(KEY_LASTNOTIF);
@@ -174,6 +197,7 @@ export function StoreProvider({ children }) {
       setReview(true);
     })();
     return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Track the Supabase auth session (cloud backup). No-op when Supabase isn't
@@ -484,7 +508,8 @@ export function StoreProvider({ children }) {
   const persistReminder = useCallback(async (next) => {
     setReminder(next);
     storage.setItem(KEY_REMINDER, JSON.stringify(next));
-    if (!next.enabled) {
+    // the master switch gates everything: don't schedule the nightly while it's off.
+    if (!next.enabled || !remindersOn) {
       await notifications.cancelDaily();
       return;
     }
@@ -496,9 +521,38 @@ export function StoreProvider({ children }) {
       return;
     }
     await notifications.scheduleDaily(next.hour, next.minute);
-  }, []);
+  }, [remindersOn]);
   const setReminderEnabled = useCallback((enabled) => persistReminder({ ...reminder, enabled }), [reminder, persistReminder]);
   const setReminderTime = useCallback((hour, minute) => persistReminder({ ...reminder, enabled: true, hour, minute }), [reminder, persistReminder]);
+
+  // Master Reminders switch — governs ALL of Cosmo's notifications. Off: cancel
+  // everything (nightly + session reminders) and stop scheduling new ones. On:
+  // re-apply whatever's configured (the nightly if enabled, this week's schedule
+  // reminders if a plan exists), gated by OS permission underneath.
+  const setRemindersOn = useCallback((on) => {
+    setRemindersOnState(on);
+    storage.setItem(KEY_REMINDERS_ON, on ? '1' : '0');
+    if (!on) {
+      notifications.cancelAll();
+      if (scheduleData && Array.isArray(scheduleData.notifIds) && scheduleData.notifIds.length) {
+        const cleared = { ...scheduleData, notifIds: [] };
+        setScheduleData(cleared);
+        storage.setItem(KEY_SCHEDULE, JSON.stringify(cleared));
+      }
+      return;
+    }
+    (async () => {
+      const granted = await notifications.ensurePermission();
+      if (!granted) return;
+      if (reminder.enabled) notifications.scheduleDaily(reminder.hour, reminder.minute);
+      if (scheduleData && Array.isArray(scheduleData.plan) && scheduleData.weekStart === weekStartMs()) {
+        const ids = await notifications.scheduleSessionReminders(buildReminderItems(scheduleData.plan, scheduleData.weekStart, identities));
+        const data = { ...scheduleData, notifIds: ids };
+        setScheduleData(data);
+        storage.setItem(KEY_SCHEDULE, JSON.stringify(data));
+      }
+    })();
+  }, [reminder, scheduleData, identities]);
 
   const openLog = useCallback((preset) => {
     setLogPreset(preset && preset.id ? preset : null);
@@ -699,13 +753,43 @@ export function StoreProvider({ children }) {
   const closeSchedule = useCallback(() => setScheduleOpen(false), []);
   // commit the arranged week (a session layout that helps hit the % plan — it
   // doesn't change intentions, the % sheet owns those). Persisted week-scoped.
-  const commitSchedule = useCallback((plan, constraints) => {
-    const data = { weekStart: weekStartMs(), plan, constraints };
+  // Also asks for notification permission (once) and schedules a local reminder
+  // 30 minutes before each upcoming session, so the plan actually nudges.
+  const commitSchedule = useCallback(async (plan, constraints) => {
+    const ws = weekStartMs();
+    // drop the previous plan's reminders so re-planning doesn't stack duplicates
+    if (scheduleData && Array.isArray(scheduleData.notifIds)) notifications.cancelReminders(scheduleData.notifIds);
+
+    let notifIds = [];
+    const hasSessions = plan.some((d) => d.sessions.length > 0);
+    // schedule reminders only when the master switch is on AND the OS allows it.
+    let granted = false;
+    if (remindersOn) {
+      granted = await notifications.ensurePermission(); // prompts only if not asked yet
+      if (granted) notifIds = await notifications.scheduleSessionReminders(buildReminderItems(plan, ws, identities));
+    }
+
+    const data = { weekStart: ws, plan, constraints, notifIds };
     setScheduleData(data);
     storage.setItem(KEY_SCHEDULE, JSON.stringify(data));
     setScheduleOpen(false);
-  }, []);
-  const clearSchedule = useCallback(() => { setScheduleData(null); storage.removeItem(KEY_SCHEDULE); }, []);
+
+    // surface a gentle message so a silent "no reminders" state isn't invisible
+    if (!remindersOn && hasSessions) {
+      showToast({ kind: 'notice', message: 'Reminders are off — turn them on in Settings to get nudged.' }, 4200);
+    } else if (!granted && hasSessions) {
+      showToast({ kind: 'notice', message: 'Allow notifications in Settings to get nudged before sessions.' }, 4200);
+    } else if (notifIds.length) {
+      showToast({ kind: 'notice', message: 'Week arranged · I’ll nudge you 30 min before each session.' }, 3200);
+    } else {
+      showToast({ kind: 'notice', message: 'Week arranged.' }, 2400);
+    }
+  }, [scheduleData, identities, remindersOn, showToast]);
+  const clearSchedule = useCallback(() => {
+    if (scheduleData && Array.isArray(scheduleData.notifIds)) notifications.cancelReminders(scheduleData.notifIds);
+    setScheduleData(null);
+    storage.removeItem(KEY_SCHEDULE);
+  }, [scheduleData]);
 
   // Add one or more identities by name (from the catalog or typed by the user).
   // If a name matches a RETIRED identity, RESTORE that one — same id, color,
@@ -830,6 +914,8 @@ export function StoreProvider({ children }) {
       reminder,
       setReminderEnabled,
       setReminderTime,
+      remindersOn,
+      setRemindersOn,
       freeHours,
       setFreeHours,
       setRelaxAllowance,
@@ -862,7 +948,7 @@ export function StoreProvider({ children }) {
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
       focusCosmos, clearCosmos, detail, openDetail, closeDetail, settingsOpen, openSettings, closeSettings,
       scheduleOpen, openSchedule, closeSchedule, schedule, commitSchedule, clearSchedule, review, openReview, closeReview, commitReview,
-      celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, freeHours, setFreeHours, setRelaxAllowance,
+      celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn, freeHours, setFreeHours, setRelaxAllowance,
       session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, exportData, deleteAccount, userName, setUserName, authSeen, markAuthSeen,
       setDesired, seedOnboarding, enter, restart, toast,
     ]

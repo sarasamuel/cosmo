@@ -21,7 +21,7 @@ const TIME_PRESETS = [{ h: 20, m: 0 }, { h: 21, m: 0 }, { h: 22, m: 0 }];
 export default function Settings({ onBack }) {
   const { t } = useTheme();
   const {
-    userName, setUserName, theme, setTheme, reminder, setReminderEnabled, setReminderTime,
+    userName, setUserName, theme, setTheme, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn,
     session, syncStatus, lastSyncedAt, openBackup, signOut, exportData, deleteAccount, restart,
   } = useStore();
   const pad = useScreenPad();
@@ -151,31 +151,44 @@ export default function Settings({ onBack }) {
 
         {/* notifications */}
         <SectionTitle style={{ marginTop: 26, marginBottom: 12 }}>Notifications</SectionTitle>
+
+        {/* one master switch governs ALL notifications; the nightly check-in is a
+            time choice underneath it (with "Off"), not a second on/off toggle */}
         <Card style={{ padding: 18 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: reminder.enabled ? t.id.relax.color : t.surface2, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="bell" size={18} stroke={2} color={reminder.enabled ? '#fff' : t.inkSoft} />
+            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: remindersOn ? t.id.relax.color : t.surface2, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="bell" size={18} stroke={2} color={remindersOn ? '#fff' : t.inkSoft} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>Nightly reminder</Text>
-              <Text style={{ fontSize: 13, color: t.inkSoft, fontFamily: sans(600) }}>A nudge to reflect on your day and log missed sessions</Text>
+              <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>Reminders</Text>
+              <Text style={{ fontSize: 13, color: t.inkSoft, fontFamily: sans(600) }}>Nudges 30 min before scheduled sessions, plus an optional nightly check-in</Text>
             </View>
-            <Switch value={reminder.enabled} onValueChange={setReminderEnabled} trackColor={{ false: t.surface3, true: t.id.relax.color }} thumbColor="#fff" />
+            <Switch value={remindersOn} onValueChange={setRemindersOn} trackColor={{ false: t.surface3, true: t.id.relax.color }} thumbColor="#fff" />
           </View>
-          {reminder.enabled && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: t.line2 }}>
-              {TIME_PRESETS.map((p) => {
-                const on = reminder.hour === p.h && reminder.minute === p.m;
-                return (
-                  <Pressable
-                    key={`${p.h}:${p.m}`}
-                    onPress={() => setReminderTime(p.h, p.m)}
-                    style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: on ? 'transparent' : t.line, backgroundColor: on ? t.ink : t.surface2 }}
-                  >
-                    <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: on ? t.bg : t.inkSoft }}>{fmtTime(p.h, p.m)}</Text>
-                  </Pressable>
-                );
-              })}
+          {remindersOn && (
+            <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: t.line2 }}>
+              <Text style={{ fontSize: 13, fontFamily: sans(700), color: t.inkSoft, marginBottom: 12 }}>Nightly check-in</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {/* "Off" disables just the nightly; session reminders stay on */}
+                <Pressable
+                  onPress={() => setReminderEnabled(false)}
+                  style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: !reminder.enabled ? 'transparent' : t.line, backgroundColor: !reminder.enabled ? t.ink : t.surface2 }}
+                >
+                  <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: !reminder.enabled ? t.bg : t.inkSoft }}>Off</Text>
+                </Pressable>
+                {TIME_PRESETS.map((p) => {
+                  const on = reminder.enabled && reminder.hour === p.h && reminder.minute === p.m;
+                  return (
+                    <Pressable
+                      key={`${p.h}:${p.m}`}
+                      onPress={() => setReminderTime(p.h, p.m)}
+                      style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: on ? 'transparent' : t.line, backgroundColor: on ? t.ink : t.surface2 }}
+                    >
+                      <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: on ? t.bg : t.inkSoft }}>{fmtTime(p.h, p.m)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
           )}
         </Card>

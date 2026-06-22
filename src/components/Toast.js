@@ -22,10 +22,13 @@ export default function Toast({ toast, bottom = 130 }) {
   const isPlan = toast && toast.kind === 'plan';
   const isReview = toast && toast.kind === 'review';
   const isRetire = toast && toast.kind === 'retire';
+  const isNotice = toast && toast.kind === 'notice'; // free-text message (e.g. schedule reminders)
   const showCheck = isPlan || isReview || isRetire; // these use the check badge, not an identity glyph
   const c = toast && toast.idn ? colorsFor(toast.idn) : null;
   const label = !toast
     ? ''
+    : isNotice
+    ? toast.message
     : isPlan
     ? 'This week is set'
     : isReview
@@ -66,14 +69,16 @@ export default function Toast({ toast, bottom = 130 }) {
             t.shadow.lg,
           ]}
         >
-          {showCheck ? (
+          {isNotice ? (
+            <Icon name="bell" size={18} stroke={2} color={t.bg} />
+          ) : showCheck ? (
             <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.good, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="check" size={13} stroke={2.6} color="#fff" />
             </View>
           ) : (
             <Glyph char={toast.idn.glyph} size={24} fontSize={12} color={c.color} />
           )}
-          <Text style={{ color: t.bg, fontSize: 15, fontFamily: sans(600) }}>{label}</Text>
+          <Text style={{ color: t.bg, fontSize: 15, fontFamily: sans(600), flexShrink: 1 }}>{label}</Text>
         </View>
       )}
     </Animated.View>
