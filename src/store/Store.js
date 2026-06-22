@@ -708,34 +708,45 @@ export function StoreProvider({ children }) {
   const clearSchedule = useCallback(() => { setScheduleData(null); storage.removeItem(KEY_SCHEDULE); }, []);
 
   // Add one or more identities by name (from the catalog or typed by the user).
-  // Each gets the next palette hue far enough from every hue already in use, so
-  // colors stay distinct. Names already present (case-insensitive) are skipped.
+  // If a name matches a RETIRED identity, RESTORE that one — same id, color,
+  // glyph, and intention — so its logged history (sessions keyed by that id)
+  // reconnects in Reflect / Identity Detail, and no duplicate is left in
+  // `retired`. Otherwise create fresh with the next well-separated palette hue.
+  // Names already active (case-insensitive) are skipped.
   const addIdentities = useCallback(
     (names) => {
       if (!names || !names.length) return;
-      setIdentities((prev) => {
-        const acc = [...prev];
-        names.forEach((raw) => {
-          const name = (raw || '').trim();
-          if (!name) return;
-          if (acc.some((i) => i.name.toLowerCase() === name.toLowerCase())) return;
-          const hue = assignHue([...acc, relax]);
-          acc.push({
-            id: name.toLowerCase().replace(/\s+/g, '-'),
-            name,
-            glyph: name[0].toUpperCase(),
-            hue,
-            desired: 10,
-            actual: 0,
-            lastActiveDays: 99,
-            streak: 0,
-          });
-        });
-        return acc;
+      // decide restore-vs-create up front from current state (synchronous), so we
+      // can also prune `retired` without relying on the setState updater timing.
+      const activeNames = new Set(identities.map((i) => i.name.toLowerCase()));
+      const toRestore = [];
+      const toCreate = [];
+      (names || []).forEach((raw) => {
+        const name = (raw || '').trim();
+        if (!name || activeNames.has(name.toLowerCase())) return;
+        activeNames.add(name.toLowerCase()); // de-dupe within this batch too
+        const wasRetired = retired.find((i) => i.name.toLowerCase() === name.toLowerCase());
+        if (wasRetired) toRestore.push(wasRetired);
+        else toCreate.push(name);
       });
+      if (toRestore.length || toCreate.length) {
+        setIdentities((prev) => {
+          const acc = [...prev];
+          toRestore.forEach((idn) => acc.push({ ...idn }));
+          toCreate.forEach((name) => {
+            const hue = assignHue([...acc, relax]);
+            acc.push({ id: name.toLowerCase().replace(/\s+/g, '-'), name, glyph: name[0].toUpperCase(), hue, desired: 10, actual: 0, lastActiveDays: 99, streak: 0 });
+          });
+          return acc;
+        });
+        if (toRestore.length) {
+          const restoredIds = new Set(toRestore.map((i) => i.id));
+          setRetired((r) => r.filter((x) => !restoredIds.has(x.id)));
+        }
+      }
       setAddOpen(false);
     },
-    [relax]
+    [identities, retired, relax]
   );
   const openAdd = useCallback(() => setAddOpen(true), []);
   const closeAdd = useCallback(() => setAddOpen(false), []);

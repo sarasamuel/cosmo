@@ -94,6 +94,24 @@ describe('StoreProvider', () => {
     expect(result.current.identities.map((i) => i.id)).toEqual(['painter']);
   });
 
+  test('retiring then re-adding an identity restores it (same id) and reconnects its logged history', async () => {
+    const { result } = await mountStore();
+    const target = result.current.identities[0];
+    const id = target.id;
+    act(() => { result.current.commitLog(target, 60, undefined, { silent: true }); }); // log some history
+    expect(result.current.sessions.filter((s) => s.id === id).length).toBeGreaterThan(0);
+
+    act(() => { result.current.retireIdentity(id); });
+    expect(result.current.identities.some((i) => i.id === id)).toBe(false);
+    expect(result.current.retired.some((i) => i.id === id)).toBe(true);
+
+    act(() => { result.current.addIdentities([target.name]); });
+    // restored (not duplicated), removed from retired, and its derived activity is back
+    expect(result.current.identities.filter((i) => i.id === id)).toHaveLength(1);
+    expect(result.current.retired.some((i) => i.id === id)).toBe(false);
+    expect(result.current.identities.find((i) => i.id === id).actual).toBeGreaterThan(0);
+  });
+
   test('starts signed out with idle sync status', async () => {
     const { result } = await mountStore();
     expect(result.current.session).toBeNull();
