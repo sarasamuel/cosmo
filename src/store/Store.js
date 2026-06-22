@@ -16,7 +16,6 @@ import {
   weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS, mergeSessions, newSessionId,
 } from '../data/data';
 import { themes, identityColors } from '../theme/theme';
-import { rollPlanForward } from '../lib/schedule';
 
 const StoreContext = createContext(null);
 
