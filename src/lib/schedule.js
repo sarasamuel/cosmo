@@ -1,0 +1,186 @@
+/* Week scheduler — DETERMINISTIC, no AI. Given the user's committed plan (each
+   identity's `desired %`) and a structured constraint object, it "arranges" /
+   "lays out" concrete sessions across the week to help hit those percentages.
+   It only reads numbers (intentions, logged-rhythm counts) — never free text —
+   and the same inputs always produce the same plan, so the result is explainable.
+
+   It is SUPPLEMENTAL: it never changes the intentions (the % sheet owns those);
+   it just proposes when to do the work.
+
+   constraints = {
+     identities: string[],                          // ids to schedule
+     fullness: 'light' | 'balanced' | 'ambitious',  // how much of the pool to place
+     hoursPerWeek: number,                          // the time pool (defaults to free hours)
+     windows: ('mornings'|'daytime'|'evenings'|'weekends')[],
+     shape: 'short' | 'deep' | 'mix',
+     protect: ('rest-day'|'calm-mornings'|'no-back-to-back'|'family-evenings')[],
+   } */
+import { MONTH_NAMES, weekStartMs, usualMins } from '../data/data';
+
+const DAY_MS = 86400000;
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const TIME_WINDOWS = {
+  mornings: { key: 'mornings', label: 'Morning', hour: 8 },
+  daytime: { key: 'daytime', label: 'Daytime', hour: 13 },
+  evenings: { key: 'evenings', label: 'Evening', hour: 19 },
+};
+const ORDER = ['mornings', 'daytime', 'evenings'];
+const FULLNESS = { light: 0.7, balanced: 1.0, ambitious: 1.25 };
+const SHAPE_MINS = { short: 30, deep: 75 };
+
+export function clockLabel(h) {
+  const ap = h < 12 ? 'AM' : 'PM';
+  let hr = h % 12;
+  if (hr === 0) hr = 12;
+  return `${hr}:00 ${ap}`;
+}
+
+// most common non-generic label this identity has logged, else its name
+function labelFor(sessions, idn) {
+  const counts = {};
+  (sessions || []).forEach((s) => {
+    if (s && s.id === idn.id && s.label && !/ session$/.test(s.label)) {
+      counts[s.label] = (counts[s.label] || 0) + 1;
+    }
+  });
+  const best = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+  return best || idn.name;
+}
+
+// per-day-of-week counts of this identity's past sessions (the logged rhythm)
+function dowCounts(sessions, id) {
+  const c = [0, 0, 0, 0, 0, 0, 0];
+  (sessions || []).forEach((s) => {
+    if (s && s.id === id && s.ts) c[new Date(s.ts).getDay()] += 1;
+  });
+  return c;
+}
+
+/* The engine. Returns PLAN: 7 day rows
+   [{ day, date, dow, dowIndex, today, rest, sessions: [{ identityId, label, window, hour, time, mins }] }]. */
+export function scheduleWeek(constraints, ctx = {}) {
+  const c = constraints || {};
+  const all = ctx.identities || [];
+  const sessions = ctx.sessions || [];
+  const weekStart = ctx.weekStart || weekStartMs(ctx.now);
+  const now = ctx.now || Date.now();
+
+  // 1. which identities (default: those chosen, else all with an intention)
+  const chosenIds = (c.identities && c.identities.length) ? c.identities : all.filter((i) => i.desired > 0).map((i) => i.id);
+  const targets = chosenIds.map((id) => all.find((i) => i.id === id)).filter(Boolean);
+
+  // build the empty week first so we always return 7 days
+  const days = Array.from({ length: 7 }, (_, k) => {
+    const d = new Date(weekStart + k * DAY_MS);
+    const dnow = new Date(now); dnow.setHours(0, 0, 0, 0);
+    return {
+      day: DOW[d.getDay()],
+      dowIndex: d.getDay(),
+      date: `${MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}`,
+      today: d.getFullYear() === dnow.getFullYear() && d.getMonth() === dnow.getMonth() && d.getDate() === dnow.getDate(),
+      rest: false,
+      sessions: [],
+    };
+  });
+  if (!targets.length) return days;
+
+  // 2. per-identity minute budget, weighted by desired %, scaled by fullness
+  const protect = new Set(c.protect || []);
+  const pool = (c.hoursPerWeek || ctx.freeHours || 35) * 60 * (FULLNESS[c.fullness] || 1);
+  const sumDesired = targets.reduce((s, i) => s + Math.max(1, i.desired), 0);
+  const perId = {};
+  targets.forEach((i) => { perId[i.id] = Math.round((pool * Math.max(1, i.desired)) / sumDesired); });
+
+  // 3. session size from shape → a flat, round-robin-ordered list of sessions to place
+  const queues = targets.map((idn) => {
+    const size = c.shape === 'mix' ? usualMins(idn) : (SHAPE_MINS[c.shape] || 45);
+    const count = Math.max(1, Math.round(perId[idn.id] / size));
+    return { idn, size, count, label: labelFor(sessions, idn), dow: dowCounts(sessions, idn) };
+  });
+  const toPlace = [];
+  let remaining = queues.reduce((s, q) => s + q.count, 0);
+  let r = 0;
+  while (remaining > 0) {
+    const q = queues[r % queues.length];
+    if (q.count > 0) { toPlace.push(q); q.count -= 1; remaining -= 1; }
+    r += 1;
+    if (r > 5000) break; // safety
+  }
+
+  // 4. eligible (day, window) slots, after protect filters
+  let timeKeys = ORDER.filter((k) => (c.windows || []).includes(k));
+  if (protect.has('calm-mornings')) timeKeys = timeKeys.filter((k) => k !== 'mornings');
+  if (protect.has('family-evenings')) timeKeys = timeKeys.filter((k) => k !== 'evenings');
+  if (!timeKeys.length) timeKeys = ['daytime']; // a window is always required by the flow; fall back safely
+
+  const weekendsOk = (c.windows || []).includes('weekends');
+  let eligibleDays = days
+    .map((d, idx) => ({ d, idx }))
+    .filter(({ d }) => weekendsOk || (d.dowIndex !== 0 && d.dowIndex !== 6));
+  if (!eligibleDays.length) eligibleDays = days.map((d, idx) => ({ d, idx })); // never schedule into nothing
+
+  // a protected rest day: the eligible day with the least logged rhythm (ties → latest)
+  if (protect.has('rest-day') && eligibleDays.length > 1) {
+    const dayLoad = (di) => queues.reduce((s, q) => s + q.dow[days[di].dowIndex], 0);
+    let restIdx = eligibleDays[0].idx; let restLoad = Infinity;
+    eligibleDays.forEach(({ idx }) => { const l = dayLoad(idx); if (l <= restLoad) { restLoad = l; restIdx = idx; } });
+    days[restIdx].rest = true;
+    eligibleDays = eligibleDays.filter(({ idx }) => idx !== restIdx);
+  }
+
+  // 5. place greedily: for each session pick the open slot that best matches the
+  //    identity's day-rhythm, spreading across days (one per day before doubling).
+  const taken = new Set(); // `${dayIdx}|${windowKey}`
+  const perDayCount = days.map(() => 0);
+  toPlace.forEach((q) => {
+    let best = null; let bestScore = -Infinity;
+    eligibleDays.forEach(({ idx }) => {
+      timeKeys.forEach((wk, wi) => {
+        const slot = `${idx}|${wk}`;
+        if (taken.has(slot)) return;
+        // prefer the identity's historically-active weekday, then emptier days,
+        // then earlier in the week / earlier in the day — all deterministic.
+        const score = q.dow[days[idx].dowIndex] * 10 - perDayCount[idx] * 6 - idx * 0.5 - wi * 0.3;
+        if (score > bestScore) { bestScore = score; best = { idx, wk }; }
+      });
+    });
+    if (!best) return; // out of slots → drop (we log this cap to the caller via summary)
+    taken.add(`${best.idx}|${best.wk}`);
+    perDayCount[best.idx] += 1;
+    const win = TIME_WINDOWS[best.wk];
+    days[best.idx].sessions.push({ identityId: q.idn.id, label: q.label, window: best.wk, hour: win.hour, time: clockLabel(win.hour), mins: q.size });
+  });
+
+  days.forEach((d) => d.sessions.sort((a, b) => a.hour - b.hour));
+  return days;
+}
+
+/* Move ONE session to a different time window, deterministically, honoring the
+   same protect constraints. Returns a new plan (or the same one if it can't). */
+export function retimeSession(plan, dayIdx, sessIdx, windowKey, constraints) {
+  const protect = new Set((constraints && constraints.protect) || []);
+  if (windowKey === 'mornings' && protect.has('calm-mornings')) return plan;
+  if (windowKey === 'evenings' && protect.has('family-evenings')) return plan;
+  const win = TIME_WINDOWS[windowKey];
+  if (!win) return plan;
+  const next = plan.map((d) => ({ ...d, sessions: d.sessions.map((s) => ({ ...s })) }));
+  const day = next[dayIdx];
+  if (!day || !day.sessions[sessIdx]) return plan;
+  // don't stack two sessions in the same window on the same day
+  if (day.sessions.some((s, i) => i !== sessIdx && s.window === windowKey)) return plan;
+  day.sessions[sessIdx] = { ...day.sessions[sessIdx], window: windowKey, hour: win.hour, time: clockLabel(win.hour) };
+  day.sessions.sort((a, b) => a.hour - b.hour);
+  return next;
+}
+
+/* Computed summary of a plan — every number, no interpretation. */
+export function scheduleSummary(plan) {
+  const flat = (plan || []).flatMap((d) => d.sessions);
+  const totalMins = flat.reduce((s, x) => s + x.mins, 0);
+  const restDay = (plan || []).find((d) => d.rest);
+  const perIdentity = {};
+  flat.forEach((s) => { perIdentity[s.identityId] = (perIdentity[s.identityId] || 0) + s.mins; });
+  const activeDays = (plan || []).filter((d) => d.sessions.length > 0).length;
+  return { sessionCount: flat.length, totalMins, restDay: restDay ? restDay.day : null, perIdentity, activeDays };
+}

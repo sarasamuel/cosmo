@@ -14,6 +14,7 @@ import IdentityRow from '../components/IdentityRow';
 import DualBar from '../components/DualBar';
 import CoachNote from '../components/CoachNote';
 import WeekPlanBanner from '../weekly/WeekPlanBanner';
+import HomeThisWeek from '../weekly/HomeThisWeek';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { useScreenPad, useBreakpoints, SPACING, bleed } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
@@ -211,6 +212,10 @@ export default function Dashboard() {
           </Pill>
         </Card>
       )}
+
+      {/* supplemental scheduler surface — "arrange your week" prompt, or the
+          committed week-at-a-glance + today's sessions */}
+      <HomeThisWeek />
 
       {/* gentle nudges — concrete suggestions toward your intentions (relocated
           from Insights). Only when identities sit below their intention. */}

@@ -125,8 +125,8 @@ export default function Journal() {
   const shown = filter === 'all' ? feed : feed.filter((r) => r.identityId === filter);
 
   // ---------- COLD START — no notes and no auto-milestones ----------
+  // A clean empty state: just the invitation. No example/placeholder entries.
   if (state === 'cold') {
-    const exampleColor = identities[0] ? colorsFor(identities[0]) : { color: t.inkSoft, soft: t.surface3 };
     return (
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 8, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         <Header t={t} />
@@ -145,14 +145,6 @@ export default function Journal() {
           <Text style={{ fontSize: 13, fontFamily: sans(600), color: t.inkFaint, marginTop: 14, textAlign: 'center' }}>
             or just start logging — milestones appear on their own
           </Text>
-        </View>
-
-        <Text style={{ fontSize: 12.5, fontFamily: sans(700), letterSpacing: 0.7, textTransform: 'uppercase', color: t.inkFaint, marginTop: 30, marginBottom: 14, marginLeft: 4 }}>
-          What entries look like
-        </Text>
-        <View style={{ opacity: 0.55 }} pointerEvents="none">
-          <Row row={{ kind: 'auto', title: 'Finished my first short story', sub: 'A milestone — the moments you’ll want to remember.', date: 'Example' }} t={t} idn={identities[0]} c={exampleColor} last={false} />
-          <Row row={{ kind: 'note', text: 'A note — a quick line on how a session went.', date: 'Example' }} t={t} idn={identities[0]} c={exampleColor} sessionMins={30} last />
         </View>
       </ScrollView>
     );

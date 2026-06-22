@@ -34,6 +34,7 @@ const KEY_AUTHSEEN = 'cosmo-authseen'; // the auth-entry flow was completed or s
 const KEY_SYNCED = 'cosmo-synced'; // ms of the last successful cloud push/pull (for the "backed up · …" label)
 const KEY_SYNCEDSTAMP = 'cosmo-syncedstamp'; // local version (stamp) last confirmed in the cloud — drives dirty-tracking + retry
 const KEY_JOINED = 'cosmo-joined'; // ms of first launch (for journal anniversaries)
+const KEY_SCHEDULE = 'cosmo-schedule'; // this week's arranged session plan { weekStart, plan, constraints }
 
 const DEFAULT_REMINDER = { enabled: false, hour: 9, minute: 0 };
 
@@ -61,6 +62,8 @@ export function StoreProvider({ children }) {
   const [cosmosFocus, setCosmosFocus] = useState(null); // focused identity in the cosmos card
   const [detail, setDetail] = useState(null); // identity whose full Detail screen is open (null = none)
   const [settingsOpen, setSettingsOpen] = useState(false); // Settings screen (pushed from the You-tab gear)
+  const [scheduleOpen, setScheduleOpen] = useState(false); // the "arrange your week" flow (supplemental scheduler)
+  const [scheduleData, setScheduleData] = useState(null); // { weekStart, plan, constraints } — this week's arranged sessions
   const [review, setReview] = useState(false); // end-of-day review screen open (from the reminder tap)
   const [celebrate, setCelebrate] = useState(null); // identity that just reached its intention (celebration overlay)
   const [allMetOpen, setAllMetOpen] = useState(false); // whole-week "every intention met" celebration
@@ -111,6 +114,7 @@ export function StoreProvider({ children }) {
       { const sy = Number(await storage.getItem(KEY_SYNCED)); if (Number.isFinite(sy) && sy) setLastSyncedAt(sy); }
       { const ss = Number(await storage.getItem(KEY_SYNCEDSTAMP)); if (Number.isFinite(ss)) syncedStampRef.current = ss; }
       { const jn = Number(await storage.getItem(KEY_JOINED)); if (Number.isFinite(jn) && jn) { setJoinedAt(jn); } else { const t0 = Date.now(); setJoinedAt(t0); storage.setItem(KEY_JOINED, String(t0)); } }
+      { const sc = await storage.getItem(KEY_SCHEDULE); if (sc) { try { const p = JSON.parse(sc); if (p && p.weekStart && Array.isArray(p.plan)) setScheduleData(p); } catch (e) { /* corrupt → ignore */ } } }
       const fhNum = Number(fh);
       if (fh != null && Number.isFinite(fhNum)) {
         setFreeHoursState(Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, fhNum)));
@@ -511,6 +515,9 @@ export function StoreProvider({ children }) {
   // drift. `identities`/`relax` state still hold the editable fields (name,
   // glyph, hue, desired); these overlays add the activity fields on top.
   const currentWeek = weekStartMs();
+  // the arranged plan only counts for the current week (it auto-expires when the
+  // week rolls over, like the all-met stamp) — no reset bookkeeping needed.
+  const schedule = scheduleData && scheduleData.weekStart === currentWeek ? scheduleData : null;
   const liveIdentities = useMemo(
     () =>
       identities.map((i) => ({
@@ -688,6 +695,18 @@ export function StoreProvider({ children }) {
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
+  const openSchedule = useCallback(() => setScheduleOpen(true), []);
+  const closeSchedule = useCallback(() => setScheduleOpen(false), []);
+  // commit the arranged week (a session layout that helps hit the % plan — it
+  // doesn't change intentions, the % sheet owns those). Persisted week-scoped.
+  const commitSchedule = useCallback((plan, constraints) => {
+    const data = { weekStart: weekStartMs(), plan, constraints };
+    setScheduleData(data);
+    storage.setItem(KEY_SCHEDULE, JSON.stringify(data));
+    setScheduleOpen(false);
+  }, []);
+  const clearSchedule = useCallback(() => { setScheduleData(null); storage.removeItem(KEY_SCHEDULE); }, []);
+
   // Add one or more identities by name (from the catalog or typed by the user).
   // Each gets the next palette hue far enough from every hue already in use, so
   // colors stay distinct. Names already present (case-insensitive) are skipped.
@@ -783,6 +802,12 @@ export function StoreProvider({ children }) {
       settingsOpen,
       openSettings,
       closeSettings,
+      scheduleOpen,
+      openSchedule,
+      closeSchedule,
+      schedule,
+      commitSchedule,
+      clearSchedule,
       review,
       openReview,
       closeReview,
@@ -824,7 +849,8 @@ export function StoreProvider({ children }) {
       liveRelax, sessions, planHistory, journal, joinedAt, addJournalEntry, removeJournalEntry, align, week, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
-      focusCosmos, clearCosmos, detail, openDetail, closeDetail, settingsOpen, openSettings, closeSettings, review, openReview, closeReview, commitReview,
+      focusCosmos, clearCosmos, detail, openDetail, closeDetail, settingsOpen, openSettings, closeSettings,
+      scheduleOpen, openSchedule, closeSchedule, schedule, commitSchedule, clearSchedule, review, openReview, closeReview, commitReview,
       celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, freeHours, setFreeHours, setRelaxAllowance,
       session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, exportData, deleteAccount, userName, setUserName, authSeen, markAuthSeen,
       setDesired, seedOnboarding, enter, restart, toast,
