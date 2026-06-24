@@ -24,8 +24,9 @@ function makeStars(n, w, h, seed) {
   }));
 }
 
-export default function Starfield({ count = 72 }) {
+export default function Starfield({ count = 72, color }) {
   const { t } = useTheme();
+  const star = color || t.star; // override lets a deep-space overlay keep light stars in light mode
   const { width, height } = useWindowDimensions();
   const stars = useMemo(() => makeStars(count, width, height, 99), [count, width, height]);
 
@@ -52,7 +53,7 @@ export default function Starfield({ count = 72 }) {
           cx={st.x}
           cy={st.y}
           r={st.r}
-          fill={t.star}
+          fill={star}
           opacity={vals[st.g].interpolate({ inputRange: [0, 1], outputRange: [0.25 * st.o + 0.05, st.o] })}
         />
       ))}

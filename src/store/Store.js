@@ -85,6 +85,7 @@ export function StoreProvider({ children }) {
   const [detail, setDetail] = useState(null); // identity whose full Detail screen is open (null = none)
   const [editing, setEditing] = useState(null); // identity being edited in the name/color sheet (null = closed)
   const [settingsOpen, setSettingsOpen] = useState(false); // Settings screen (pushed from the You-tab gear)
+  const [methodOpen, setMethodOpen] = useState(false); // "The Cosmo Method" reading overlay (from the You tab)
   const [scheduleOpen, setScheduleOpen] = useState(false); // the "arrange your week" flow (supplemental scheduler)
   const [scheduleData, setScheduleData] = useState(null); // { weekStart, plan, constraints } — this week's arranged sessions
   const [review, setReview] = useState(false); // end-of-day review screen open (from the reminder tap)
@@ -799,6 +800,9 @@ export function StoreProvider({ children }) {
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
+  const openMethod = useCallback(() => setMethodOpen(true), []);
+  const closeMethod = useCallback(() => setMethodOpen(false), []);
+
   const openSchedule = useCallback(() => setScheduleOpen(true), []);
   const closeSchedule = useCallback(() => setScheduleOpen(false), []);
   // commit the arranged week (a session layout that helps hit the % plan — it
@@ -952,6 +956,9 @@ export function StoreProvider({ children }) {
       settingsOpen,
       openSettings,
       closeSettings,
+      methodOpen,
+      openMethod,
+      closeMethod,
       scheduleOpen,
       openSchedule,
       closeSchedule,
@@ -1003,7 +1010,7 @@ export function StoreProvider({ children }) {
       liveRelax, sessions, planHistory, journal, joinedAt, addJournalEntry, removeJournalEntry, align, week, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned, tourSeen, markTourSeen,
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
-      focusCosmos, clearCosmos, detail, openDetail, closeDetail, editing, openEditIdentity, closeEditIdentity, editIdentity, settingsOpen, openSettings, closeSettings,
+      focusCosmos, clearCosmos, detail, openDetail, closeDetail, editing, openEditIdentity, closeEditIdentity, editIdentity, settingsOpen, openSettings, closeSettings, methodOpen, openMethod, closeMethod,
       scheduleOpen, openSchedule, closeSchedule, schedule, commitSchedule, clearSchedule, review, openReview, closeReview, commitReview,
       celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn, freeHours, setFreeHours, setRelaxAllowance,
       session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, exportData, deleteAccount, userName, setUserName, authSeen, markAuthSeen,

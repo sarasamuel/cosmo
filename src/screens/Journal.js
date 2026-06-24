@@ -120,8 +120,13 @@ export default function Journal() {
   // so a sparse feed still carries a "Cosmo noticed" moment beyond the milestones.
   const insights = useMemo(() => buildInsights(identities).filter((i) => i.kind !== 'nudge').slice(0, 1), [identities]);
 
+  // The weekly note and the observations are both Cosmo's voice and often lead
+  // with the same identity (e.g. one waiting for its first session), so showing
+  // both reads as a duplicate. Prefer the targeted, identity-tagged insight here
+  // and drop the generic weekly note when one is present (it still appears on the
+  // Dashboard + Reflect).
   const feed = useMemo(
-    () => buildFeed({ entries: journal, autoMs, coachNote: coach && coach.note, insights, now: Date.now() }),
+    () => buildFeed({ entries: journal, autoMs, coachNote: insights.length ? null : (coach && coach.note), insights, now: Date.now() }),
     [journal, autoMs, coach, insights],
   );
   const shown = filter === 'all' ? feed : feed.filter((r) => r.identityId === filter);

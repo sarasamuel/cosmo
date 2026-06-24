@@ -30,6 +30,7 @@ import Reflect from './src/screens/Reflect';
 import Identities from './src/screens/Identities';
 import IdentityDetail from './src/screens/IdentityDetail';
 import Settings from './src/screens/Settings';
+import Methodology from './src/screens/Methodology';
 import ScheduleFlow from './src/weekly/ScheduleFlow';
 import EndOfDayReview from './src/screens/EndOfDayReview';
 import Onboarding from './src/onboarding/Onboarding';
@@ -37,7 +38,7 @@ import AuthFlow from './src/onboarding/AuthFlow';
 
 function AppShell() {
   const { t } = useTheme();
-  const { tab, goTo, openLog, toast, detail, closeDetail, settingsOpen, closeSettings, scheduleOpen, review, closeReview, celebrate, clearCelebrate, allMetOpen, closeAllMet, identities, form } = useStore();
+  const { tab, goTo, openLog, toast, detail, closeDetail, settingsOpen, closeSettings, scheduleOpen, review, closeReview, celebrate, clearCelebrate, allMetOpen, closeAllMet, identities, form, methodOpen, closeMethod } = useStore();
   const insets = useSafeAreaInsets();
 
   return (
@@ -77,6 +78,7 @@ function AppShell() {
       <EditIdentitySheet />
       <BackupSheet />
       <IntentionMet idn={celebrate} onClose={clearCelebrate} />
+      <Methodology open={methodOpen} onClose={closeMethod} />
       <AllIntentionsMet open={allMetOpen} form={form} identities={identities} onClose={closeAllMet} />
     </View>
   );

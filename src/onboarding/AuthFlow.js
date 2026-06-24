@@ -43,7 +43,11 @@ export default function AuthFlow() {
   const { setUserName, markAuthSeen } = useStore();
   const insets = useSafeAreaInsets();
 
-  const [stage, setStage] = useState('email'); // 'email' | 'code' | 'name'
+  // TEMPORARY: email/code sign-in is bypassed for now — the flow opens straight
+  // on the name step so the user only enters their name. To restore sign-in,
+  // change the initial stage back to 'email'. (The 'email'/'code' stages below are
+  // left intact, just unreachable.)
+  const [stage, setStage] = useState('name'); // 'email' | 'code' | 'name'
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');

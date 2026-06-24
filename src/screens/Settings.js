@@ -100,7 +100,7 @@ export default function Settings({ onBack }) {
           )}
         </View>
 
-        {/* cloud backup */}
+        {/* Cloud backup — temporarily disabled. To restore, un-comment this Card.
         <Card style={{ marginTop: 14, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 16 }}>
           <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: dotBg, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name={!session ? 'sparkle' : failed ? 'clock' : 'check'} size={18} stroke={2.4} color={session ? '#fff' : t.inkSoft} />
@@ -108,7 +108,7 @@ export default function Settings({ onBack }) {
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>Cloud backup</Text>
             <Text numberOfLines={1} style={{ fontSize: 13, color: failed ? t.warn : t.inkSoft, fontFamily: sans(600) }}>
-              {backupStatus}{session && !failed && !syncing && session.user?.email ? ` · ${session.user.email}` : ''}
+              {backupStatus}{session && !failed && !syncing && session.user?.email ? ' · ' + session.user.email : ''}
             </Text>
           </View>
           {session ? (
@@ -121,6 +121,7 @@ export default function Settings({ onBack }) {
             </Pill>
           )}
         </Card>
+        */}
 
         {/* appearance */}
         <SectionTitle style={{ marginTop: 26, marginBottom: 12 }}>Appearance</SectionTitle>
