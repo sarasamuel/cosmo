@@ -227,15 +227,19 @@ export default function ScheduleFlow() {
                               {/* change time of day */}
                               <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                                 <Text style={{ width: 40, fontSize: 12, fontFamily: sans(700), color: t.inkFaint }}>Time</Text>
-                                {MOVE.map((m) => (
-                                  <Pressable
-                                    key={m.v}
-                                    onPress={() => { setPlan((p) => retimeSession(p, dayIdx, sessIdx, m.v, committedConstraints)); setRetiming(null); }}
-                                    style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: t.line, backgroundColor: t.surface2 }}
-                                  >
-                                    <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: t.inkSoft }}>{m.label}</Text>
-                                  </Pressable>
-                                ))}
+                                {MOVE.map((m) => {
+                                  const cur = s.window === m.v; // the session's current window
+                                  return (
+                                    <Pressable
+                                      key={m.v}
+                                      disabled={cur}
+                                      onPress={() => { setPlan((p) => retimeSession(p, dayIdx, sessIdx, m.v, committedConstraints)); setRetiming(null); }}
+                                      style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: cur ? c.color : t.line, backgroundColor: cur ? c.soft : t.surface2 }}
+                                    >
+                                      <Text style={{ fontSize: 12.5, fontFamily: sans(cur ? 700 : 600), color: cur ? c.color : t.inkSoft }}>{m.label}</Text>
+                                    </Pressable>
+                                  );
+                                })}
                               </View>
                               {/* remove from the week */}
                               <Pressable

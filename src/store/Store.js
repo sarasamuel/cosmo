@@ -36,6 +36,7 @@ const KEY_SYNCED = 'cosmo-synced'; // ms of the last successful cloud push/pull 
 const KEY_SYNCEDSTAMP = 'cosmo-syncedstamp'; // local version (stamp) last confirmed in the cloud — drives dirty-tracking + retry
 const KEY_JOINED = 'cosmo-joined'; // ms of first launch (for journal anniversaries)
 const KEY_SCHEDULE = 'cosmo-schedule'; // this week's arranged session plan { weekStart, plan, constraints }
+const KEY_TOUR = 'cosmo-tour-seen'; // the feature tour played once before setup (don't replay it)
 
 const DEFAULT_REMINDER = { enabled: false, hour: 9, minute: 0 };
 
@@ -77,12 +78,14 @@ export function StoreProvider({ children }) {
   const [logPreset, setLogPreset] = useState(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [weekPlanned, setWeekPlanned] = useState(false);
+  const [tourSeen, setTourSeen] = useState(false); // feature tour shown once before setup
   const [freeHours, setFreeHoursState] = useState(FREE_HOURS_WEEK.def);
   const [addOpen, setAddOpen] = useState(false);
   const [cosmosFocus, setCosmosFocus] = useState(null); // focused identity in the cosmos card
   const [detail, setDetail] = useState(null); // identity whose full Detail screen is open (null = none)
   const [editing, setEditing] = useState(null); // identity being edited in the name/color sheet (null = closed)
   const [settingsOpen, setSettingsOpen] = useState(false); // Settings screen (pushed from the You-tab gear)
+  const [methodOpen, setMethodOpen] = useState(false); // "The Cosmo Method" reading overlay (from the You tab)
   const [scheduleOpen, setScheduleOpen] = useState(false); // the "arrange your week" flow (supplemental scheduler)
   const [scheduleData, setScheduleData] = useState(null); // { weekStart, plan, constraints } — this week's arranged sessions
   const [review, setReview] = useState(false); // end-of-day review screen open (from the reminder tap)
@@ -138,6 +141,7 @@ export function StoreProvider({ children }) {
       { const jn = Number(await storage.getItem(KEY_JOINED)); if (Number.isFinite(jn) && jn) { setJoinedAt(jn); } else { const t0 = Date.now(); setJoinedAt(t0); storage.setItem(KEY_JOINED, String(t0)); } }
       { const sc = await storage.getItem(KEY_SCHEDULE); if (sc) { try { const p = JSON.parse(sc); if (p && p.weekStart && Array.isArray(p.plan)) setScheduleData(p); } catch (e) { /* corrupt → ignore */ } } }
       { const ro = await storage.getItem(KEY_REMINDERS_ON); if (ro === '0') setRemindersOnState(false); }
+      { const tr = await storage.getItem(KEY_TOUR); if (tr === '1') setTourSeen(true); }
       const fhNum = Number(fh);
       if (fh != null && Number.isFinite(fhNum)) {
         setFreeHoursState(Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, fhNum)));
@@ -230,8 +234,9 @@ export function StoreProvider({ children }) {
   // in-memory state to a pristine pre-onboarding slate (routes back to AuthFlow).
   const resetLocal = useCallback(() => {
     [KEY_THEME, KEY_STARTED, KEY_WEEK, KEY_FORM, KEY_DATA, KEY_REMINDER, KEY_LASTNOTIF,
-      KEY_FREEHOURS, KEY_STAMP, KEY_NAME, KEY_AUTHSEEN, KEY_ALLMET, KEY_SYNCED, KEY_SYNCEDSTAMP]
+      KEY_FREEHOURS, KEY_STAMP, KEY_NAME, KEY_AUTHSEEN, KEY_ALLMET, KEY_SYNCED, KEY_SYNCEDSTAMP, KEY_TOUR]
       .forEach((k) => storage.removeItem(k));
+    setTourSeen(false);
     notifications.cancelDaily();
     setIdentities(IDENTITIES); setRetired([]); setRelax(RELAX); setSessions(SESSIONS); setPlanHistory({});
     setThemeName('dark'); setFormState('orbit'); setFreeHoursState(FREE_HOURS_WEEK.def);
@@ -484,10 +489,15 @@ export function StoreProvider({ children }) {
     if (Array.isArray(nextIdentities) && nextIdentities.length) {
       setIdentities(nextIdentities);
       // the allocations the user just set ARE this week's plan — record them as
-      // the first entry of the plan history so the opening week reads truthfully.
+      // the first entry of the plan history so the opening week reads truthfully,
+      // and mark the week planned (like commitWeekPlan) so the Dashboard reflects
+      // it: no redundant "plan your week" nag, and the supplemental scheduler's
+      // "Arrange your week" prompt is available right away.
       const plan = {};
       nextIdentities.forEach((i) => { plan[i.id] = i.desired; });
       setPlanHistory({ [weekStartMs()]: plan });
+      setWeekPlanned(true);
+      storage.setItem(KEY_WEEK, '1');
     }
     setSessions([]);
   }, []);
@@ -495,6 +505,13 @@ export function StoreProvider({ children }) {
   const enter = useCallback(() => {
     setStarted(true);
     storage.setItem(KEY_STARTED, '1');
+  }, []);
+
+  // Mark the pre-setup feature tour as seen so it doesn't replay if the user
+  // leaves and returns before finishing setup.
+  const markTourSeen = useCallback(() => {
+    setTourSeen(true);
+    storage.setItem(KEY_TOUR, '1');
   }, []);
 
   const restart = useCallback(() => {
@@ -783,6 +800,9 @@ export function StoreProvider({ children }) {
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
+  const openMethod = useCallback(() => setMethodOpen(true), []);
+  const closeMethod = useCallback(() => setMethodOpen(false), []);
+
   const openSchedule = useCallback(() => setScheduleOpen(true), []);
   const closeSchedule = useCallback(() => setScheduleOpen(false), []);
   // commit the arranged week (a session layout that helps hit the % plan — it
@@ -936,6 +956,9 @@ export function StoreProvider({ children }) {
       settingsOpen,
       openSettings,
       closeSettings,
+      methodOpen,
+      openMethod,
+      closeMethod,
       scheduleOpen,
       openSchedule,
       closeSchedule,
@@ -974,6 +997,8 @@ export function StoreProvider({ children }) {
       markAuthSeen,
       setDesired,
       seedOnboarding,
+      tourSeen,
+      markTourSeen,
       enter,
       restart,
       toast,
@@ -983,9 +1008,9 @@ export function StoreProvider({ children }) {
     [
       theme, themeObj, setTheme, started, hydrated, tab, goTo, form, setForm, liveIdentities, retired, retireIdentity, restIdentity,
       liveRelax, sessions, planHistory, journal, joinedAt, addJournalEntry, removeJournalEntry, align, week, logTargets, logOpen, logPreset, openLog, closeLog,
-      commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
+      commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned, tourSeen, markTourSeen,
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
-      focusCosmos, clearCosmos, detail, openDetail, closeDetail, editing, openEditIdentity, closeEditIdentity, editIdentity, settingsOpen, openSettings, closeSettings,
+      focusCosmos, clearCosmos, detail, openDetail, closeDetail, editing, openEditIdentity, closeEditIdentity, editIdentity, settingsOpen, openSettings, closeSettings, methodOpen, openMethod, closeMethod,
       scheduleOpen, openSchedule, closeSchedule, schedule, commitSchedule, clearSchedule, review, openReview, closeReview, commitReview,
       celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn, freeHours, setFreeHours, setRelaxAllowance,
       session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, exportData, deleteAccount, userName, setUserName, authSeen, markAuthSeen,

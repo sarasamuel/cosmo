@@ -202,7 +202,10 @@ export function scheduleWeek(constraints, ctx = {}) {
 }
 
 /* Move ONE session to a different time window, deterministically, honoring the
-   same protect constraints. Returns a new plan (or the same one if it can't). */
+   same protect constraints. If another session already holds the target window
+   that day, the two SWAP windows (rather than silently refusing) — so a tap
+   always has a visible effect even on a full day. Returns a new plan (or the
+   same one if the move is impossible: protected window, or already there). */
 export function retimeSession(plan, dayIdx, sessIdx, windowKey, constraints) {
   const protect = new Set((constraints && constraints.protect) || []);
   if (windowKey === 'mornings' && protect.has('calm-mornings')) return plan;
@@ -211,11 +214,22 @@ export function retimeSession(plan, dayIdx, sessIdx, windowKey, constraints) {
   if (!win) return plan;
   const next = plan.map((d) => ({ ...d, sessions: d.sessions.map((s) => ({ ...s })) }));
   const day = next[dayIdx];
-  if (!day || !day.sessions[sessIdx]) return plan;
-  // don't stack two sessions in the same window on the same day
-  if (day.sessions.some((s, i) => i !== sessIdx && s.window === windowKey)) return plan;
-  day.sessions[sessIdx] = { ...day.sessions[sessIdx], window: windowKey, hour: win.hour, time: clockLabel(win.hour) };
-  day.sessions.sort((a, b) => a.hour - b.hour);
+  const me = day && day.sessions[sessIdx];
+  if (!me || me.window === windowKey) return plan; // nothing to do
+  const setWindow = (s, key) => {
+    const w = TIME_WINDOWS[key] || { hour: s.hour };
+    return { ...s, window: key, hour: w.hour, time: clockLabel(w.hour) };
+  };
+  // another session in the target window → swap it into mine, so neither stacks
+  const otherIdx = day.sessions.findIndex((s, i) => i !== sessIdx && s.window === windowKey);
+  if (otherIdx !== -1) {
+    // can't swap into a window that's protected for the displaced session's move
+    if (me.window === 'mornings' && protect.has('calm-mornings')) return plan;
+    if (me.window === 'evenings' && protect.has('family-evenings')) return plan;
+    day.sessions[otherIdx] = setWindow(day.sessions[otherIdx], me.window);
+  }
+  day.sessions[sessIdx] = setWindow(me, windowKey);
+  day.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (a.hour - b.hour));
   return next;
 }
 

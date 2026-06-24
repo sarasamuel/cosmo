@@ -121,6 +121,24 @@ describe('retimeSession', () => {
     const same = retimeSession(plan, di, 0, 'mornings', con({ protect: ['calm-mornings'] }));
     expect(same[di].sessions[0].window).not.toBe('mornings');
   });
+
+  test('SWAPS with the occupant when the target window is taken (no silent no-op)', () => {
+    // a full day: one morning + one evening session sharing the day
+    const plan = scheduleWeek(con({ windows: ['mornings', 'evenings', 'weekends'], shape: 'mix' }), base);
+    const di = plan.findIndex((d) => !d.rest && d.sessions.length === 2 && d.sessions.some((s) => s.window === 'mornings') && d.sessions.some((s) => s.window === 'evenings'));
+    expect(di).toBeGreaterThanOrEqual(0); // the engine fills both windows → full day exists
+    const mornIdx = plan[di].sessions.findIndex((s) => s.window === 'mornings');
+    const eveId = plan[di].sessions.find((s) => s.window === 'evenings').identityId;
+    const mornId = plan[di].sessions[mornIdx].identityId;
+    // move the morning session to evenings → they swap, and the plan actually changes
+    const out = retimeSession(plan, di, mornIdx, 'evenings', con());
+    expect(out).not.toBe(plan); // not a silent no-op
+    const nowEve = out[di].sessions.find((s) => s.window === 'evenings');
+    const nowMorn = out[di].sessions.find((s) => s.window === 'mornings');
+    expect(nowEve.identityId).toBe(mornId); // mine took evening
+    expect(nowMorn.identityId).toBe(eveId); // the occupant took my morning
+    expect(out[di].sessions).toHaveLength(2); // nothing stacked or lost
+  });
 });
 
 describe('moveSessionToDay / removeSession (tap-to-move + remove)', () => {

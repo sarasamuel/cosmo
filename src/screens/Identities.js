@@ -12,7 +12,7 @@ import { serif, sans } from '../theme/fonts';
 
 export default function Identities() {
   const { t, colorsFor } = useTheme();
-  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, openSettings } = useStore();
+  const { identities, week, weekPlanned, openPlan, openAdd, openDetail, openSettings, openMethod } = useStore();
   const total = identities.reduce((s, i) => s + i.desired, 0);
   const maxPlan = Math.max(...identities.map((i) => i.desired), 1);
   const pad = useScreenPad();
@@ -71,11 +71,11 @@ export default function Identities() {
           })}
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: t.line2 }}>
-          <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: total === 100 ? t.good : t.inkSoft }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: t.line2 }}>
+          <Text style={{ flex: 1, fontSize: 13.5, fontFamily: sans(700), color: total === 100 ? t.good : t.inkSoft }}>
             {total}% allocated{total === 100 ? ' · balanced' : ''}
           </Text>
-          <Pill bg={t.ink} onPress={openPlan} style={{ paddingHorizontal: 18, paddingVertical: 10 }}>
+          <Pill bg={t.ink} onPress={openPlan} style={{ paddingHorizontal: 18, paddingVertical: 10, flexShrink: 0 }}>
             <Icon name="sparkle" size={14} color={t.bg} />
             <Text style={{ color: t.bg, fontFamily: sans(700), fontSize: 13.5 }}>{weekPlanned ? 'Re-plan week' : 'Plan this week'}</Text>
           </Pill>
@@ -90,6 +90,21 @@ export default function Identities() {
         <Icon name="plus" size={20} color={t.ink} />
         <Text style={{ marginLeft: 10, fontSize: 18, fontFamily: sans(600), color: t.ink }}>Add an identity</Text>
       </Button>
+
+      {/* The Cosmo Method — the philosophy reading view (deep-space overlay) */}
+      <Pressable
+        onPress={openMethod}
+        style={({ pressed }) => ({ marginTop: 24, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: t.radii.md, backgroundColor: t.surface, borderWidth: 1, borderColor: t.line, opacity: pressed ? 0.7 : 1 })}
+      >
+        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: t.surface2, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="sparkle" size={18} color={t.core1} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 15.5, fontFamily: sans(700), color: t.ink }}>The Cosmo Method</Text>
+          <Text style={{ fontSize: 13, color: t.inkSoft, fontFamily: sans(600), marginTop: 2 }}>The philosophy behind your time</Text>
+        </View>
+        <Icon name="chevron" size={18} color={t.inkFaint} />
+      </Pressable>
     </ScrollView>
   );
 }

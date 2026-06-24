@@ -18,6 +18,7 @@ import ConstellationViz from '../viz/ConstellationViz';
 import OnbCadence from './OnbCadence';
 import OnbRest from './OnbRest';
 import OnbAllocate from './OnbAllocate';
+import TourContent from './OnboardingTour';
 import { CADENCE, personaColor } from './helpers';
 import { SPACING, bleed } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
@@ -46,10 +47,21 @@ function WelcomeConstellation() {
 
 export default function Onboarding() {
   const { t } = useTheme();
-  const { enter, form, setForm, setFreeHours: persistFreeHours, setRelaxAllowance, seedOnboarding, setReminderTime, userName } = useStore();
+  const { enter, form, setForm, setFreeHours: persistFreeHours, setRelaxAllowance, seedOnboarding, setReminderTime, tourSeen, markTourSeen, userName } = useStore();
   const insets = useSafeAreaInsets();
 
+  // the feature tour plays once before setup; returning users (tourSeen) skip
+  // straight to the setup steps. tourSeen is hydrated before this mounts → no flash.
+  const [phase, setPhase] = useState(tourSeen ? 'setup' : 'tour');
   const [step, setStep] = useState(0);
+  // the first reachable setup step: tour-users hand off to STEP 1 (the tour
+  // covered the welcome), skip-tour users start at STEP 0. Captured once at mount
+  // so the progress dots show only the steps this user actually traverses.
+  const [firstStep] = useState(tourSeen ? 0 : 1);
+  // the tour already opened with a welcome, so hand off to STEP 1 (choose
+  // identities), skipping the redundant setup welcome. Returning users who skip
+  // the tour still land on STEP 0 as their entry point.
+  const finishTour = () => { markTourSeen(); setStep(1); setPhase('setup'); };
   const [selected, setSelected] = useState(['Writer', 'Reader', 'Engineer', 'Musician', 'Painter']);
   const [custom, setCustom] = useState('');
   const [cadence] = useState('week'); // time is now fixed to a weekly rhythm
@@ -102,6 +114,10 @@ export default function Onboarding() {
       <Starfield count={60} />
       <StatusBar />
 
+      {phase === 'tour' ? (
+        <TourContent onDone={finishTour} />
+      ) : (
+        <>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingHorizontal: SPACING.onboardingPad }} showsVerticalScrollIndicator={false}>
         {/* STEP 0 — welcome */}
         {step === 0 && (
@@ -277,7 +293,7 @@ export default function Onboarding() {
 
       {/* progress dots */}
       <View style={{ paddingTop: 14, paddingBottom: 20 + insets.bottom, flexDirection: 'row', gap: 7, justifyContent: 'center' }}>
-        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+        {Array.from({ length: 7 - firstStep }, (_, k) => k + firstStep).map((i) => (
           <View
             key={i}
             style={{
@@ -289,6 +305,8 @@ export default function Onboarding() {
           />
         ))}
       </View>
+        </>
+      )}
     </View>
   );
 }
