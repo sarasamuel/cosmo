@@ -77,7 +77,7 @@ function AppShell() {
       <EditIdentitySheet />
       <BackupSheet />
       <IntentionMet idn={celebrate} onClose={clearCelebrate} />
-      <AllIntentionsMet open={allMetOpen} form={form} identities={identities} onClose={closeAllMet} onShare={closeAllMet} />
+      <AllIntentionsMet open={allMetOpen} form={form} identities={identities} onClose={closeAllMet} />
     </View>
   );
 }

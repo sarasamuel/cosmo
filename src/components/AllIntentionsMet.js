@@ -19,7 +19,7 @@
    - Glint burst ~1s after open; headline/CTA in at 1350ms; whole-figure breathe
      at 2200ms. Replay re-runs the figure only. Reduced motion → settled state. */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, Pressable, Easing, AccessibilityInfo, useWindowDimensions } from 'react-native';
+import { Animated, View, Text, Pressable, Easing, AccessibilityInfo, useWindowDimensions, Share } from 'react-native';
 import Svg, { Circle, Line, Path, G, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { useTheme } from '../store/Store';
 import { serif, sans } from '../theme/fonts';
@@ -380,7 +380,18 @@ export default function AllIntentionsMet({ open, form, identities, onClose, onSh
   const figW = Math.min(width - 40, 360);
   const scrimColor = t.name === 'light' ? '#eceaf4' : '#05050c';
   const scrimMax = t.name === 'light' ? 0.92 : 0.94;
-  const share = onShare || onClose;
+  // open the OS share sheet with a celebratory line; the overlay stays up so the
+  // user can keep admiring / replay / dismiss on their own. onShare overrides.
+  const doShare = async () => {
+    try {
+      await Share.share({
+        message: `Every intention met this week on Cosmo — all ${n} ${n === 1 ? 'identity' : 'identities'} tended in full. ✦`,
+      });
+    } catch (e) {
+      /* user dismissed or share unavailable — no-op */
+    }
+  };
+  const share = onShare || doShare;
 
   return (
     <Pressable onPress={onClose} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 70, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
