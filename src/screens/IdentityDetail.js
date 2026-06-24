@@ -67,7 +67,7 @@ export default function IdentityDetail({
   onRetire,
 }) {
   const { t, colorsFor } = useTheme();
-  const { identities, sessions, planHistory, journal, openLog, retireIdentity, form } = useStore();
+  const { identities, sessions, planHistory, journal, openLog, retireIdentity, restIdentity, openEditIdentity, form } = useStore();
   const pad = useScreenPad();
 
   // Resolve the live identity from the store (by id) so the screen reflects
@@ -263,15 +263,15 @@ export default function IdentityDetail({
       <Card style={{ paddingHorizontal: 22, paddingVertical: 2 }}>
         <ManageRow
           icon={<Icon name="moon" size={18} stroke={2} color={t.inkSoft} />}
-          title="Rest this week"
-          subtitle="Skip the plan once — bring it back any time"
-          onPress={onRest}
+          title={identity.desired === 0 ? 'Resting this week' : 'Rest this week'}
+          subtitle={identity.desired === 0 ? 'Paused at 0% — re-plan your week to bring it back' : 'Skip the plan once — bring it back any time'}
+          onPress={() => restIdentity(identity.id)}
         />
         <ManageRow
           icon={<Icon name="sparkle" size={18} color={t.inkSoft} />}
           title="Edit name & color"
           subtitle={`How ${identity.name} appears in your cosmos`}
-          onPress={onEdit}
+          onPress={() => openEditIdentity(identity)}
         />
         <ManageRow
           icon={<Icon name="archive" size={18} stroke={1.8} color={t.warn} />}

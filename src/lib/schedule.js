@@ -29,6 +29,14 @@ const ORDER = ['mornings', 'daytime', 'evenings'];
 const FULLNESS = { light: 0.7, balanced: 1.0, ambitious: 1.25 };
 const SHAPE_MINS = { short: 30, deep: 75 };
 
+// which clock hours belong to each window (late night 0–4 counts as evening).
+const WINDOW_HOURS = {
+  mornings: [5, 6, 7, 8, 9, 10],
+  daytime: [11, 12, 13, 14, 15, 16],
+  evenings: [17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4],
+};
+const WIN_RANK = { mornings: 0, daytime: 1, evenings: 2 }; // for chronological sort, even with a personalized late hour
+
 export function clockLabel(h) {
   const ap = h < 12 ? 'AM' : 'PM';
   let hr = h % 12;
@@ -43,6 +51,38 @@ function dowCounts(sessions, id) {
     if (s && s.id === id && s.ts) c[new Date(s.ts).getDay()] += 1;
   });
   return c;
+}
+
+// per-clock-hour counts of this identity's past sessions (the time-of-day rhythm)
+function hourCounts(sessions, id) {
+  const h = new Array(24).fill(0);
+  (sessions || []).forEach((s) => {
+    if (s && s.id === id && s.ts) h[new Date(s.ts).getHours()] += 1;
+  });
+  return h;
+}
+
+// From an hour histogram, the identity's TIME-OF-DAY profile: per window, the
+// share of its sessions that fall in that window (0..1), and a personalized hour
+// — the modal (most common) hour it's actually logged within that window. With
+// no evidence, hour falls back to the window's canonical time and share is null.
+// Deterministic: ties on the modal hour resolve to the earlier hour in the window.
+function timeProfile(hist) {
+  const total = hist.reduce((a, b) => a + b, 0);
+  const share = {};
+  const hour = {};
+  ORDER.forEach((wk) => {
+    let sum = 0;
+    let bestH = TIME_WINDOWS[wk].hour;
+    let bestC = 0;
+    WINDOW_HOURS[wk].forEach((h) => {
+      sum += hist[h];
+      if (hist[h] > bestC) { bestC = hist[h]; bestH = h; }
+    });
+    share[wk] = total ? sum / total : null;
+    hour[wk] = bestH; // canonical when bestC stayed 0 (no sessions in this window)
+  });
+  return { total, share, hour };
 }
 
 /* The engine. Returns PLAN: 7 day rows
@@ -87,7 +127,9 @@ export function scheduleWeek(constraints, ctx = {}) {
     const count = Math.max(1, Math.round(perId[idn.id] / size));
     // the scheduled session is labeled by its identity (notes/labels in this app
     // are reflective lines, not activity names — they'd read oddly as titles).
-    return { idn, size, count, label: idn.name, dow: dowCounts(sessions, idn) };
+    const dow = dowCounts(sessions, idn.id); // NB: idn.id (the count keys on session.id)
+    const dowTotal = dow.reduce((a, b) => a + b, 0);
+    return { idn, size, count, label: idn.name, dow, dowTotal, tp: timeProfile(hourCounts(sessions, idn.id)) };
   });
   const toPlace = [];
   let remaining = queues.reduce((s, q) => s + q.count, 0);
@@ -121,29 +163,41 @@ export function scheduleWeek(constraints, ctx = {}) {
   }
 
   // 5. place greedily: for each session pick the open slot that best matches the
-  //    identity's day-rhythm, spreading across days (one per day before doubling).
+  //    identity's logged rhythm — BOTH which weekday and which time of day it
+  //    usually does this, spreading across days (one per day before doubling).
+  const W_DOW = 10; // weight on the day-of-week habit (share of its sessions on this weekday)
+  const W_WIN = 8; //  weight on the time-of-day habit (share of its sessions in this window)
+  const W_SPREAD = 6; // penalty per session already on a day, to spread the week out
   const taken = new Set(); // `${dayIdx}|${windowKey}`
   const perDayCount = days.map(() => 0);
   toPlace.forEach((q) => {
     let best = null; let bestScore = -Infinity;
+    // normalized to shares (0..1) so day and time signals are comparable; both are
+    // 0 with no history, so a cold start falls back to pure spread + earliest slot.
+    const dowShare = (di) => (q.dowTotal ? q.dow[days[di].dowIndex] / q.dowTotal : 0);
     eligibleDays.forEach(({ idx }) => {
       timeKeys.forEach((wk, wi) => {
         const slot = `${idx}|${wk}`;
         if (taken.has(slot)) return;
-        // prefer the identity's historically-active weekday, then emptier days,
-        // then earlier in the week / earlier in the day — all deterministic.
-        const score = q.dow[days[idx].dowIndex] * 10 - perDayCount[idx] * 6 - idx * 0.5 - wi * 0.3;
+        // prefer the identity's historical weekday AND its usual time of day, then
+        // emptier days, then earlier in the week / earlier window — all deterministic.
+        const winShare = q.tp.share[wk] || 0;
+        const score = dowShare(idx) * W_DOW + winShare * W_WIN - perDayCount[idx] * W_SPREAD - idx * 0.5 - wi * 0.3;
         if (score > bestScore) { bestScore = score; best = { idx, wk }; }
       });
     });
     if (!best) return; // out of slots → drop (we log this cap to the caller via summary)
     taken.add(`${best.idx}|${best.wk}`);
     perDayCount[best.idx] += 1;
-    const win = TIME_WINDOWS[best.wk];
-    days[best.idx].sessions.push({ identityId: q.idn.id, label: q.label, window: best.wk, hour: win.hour, time: clockLabel(win.hour), mins: q.size });
+    // use the identity's personalized hour for this window (its modal logged hour),
+    // falling back to the window's canonical time when there's no history.
+    const hour = q.tp.hour[best.wk];
+    days[best.idx].sessions.push({ identityId: q.idn.id, label: q.label, window: best.wk, hour, time: clockLabel(hour), mins: q.size });
   });
 
-  days.forEach((d) => d.sessions.sort((a, b) => a.hour - b.hour));
+  // chronological within a day: by window first (so a personalized late-night
+  // "evening" hour still sorts after the morning), then by the hour itself.
+  days.forEach((d) => d.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (a.hour - b.hour)));
   return days;
 }
 

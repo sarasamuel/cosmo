@@ -15,6 +15,7 @@ import { serif, sans } from '../theme/fonts';
 
 const GOLD = '#f6bf5c';
 const GOLD_INK = '#1c1708';
+const PAGE = 15; // how many timeline rows to reveal at once
 
 function Header({ t }) {
   return (
@@ -102,6 +103,7 @@ export default function Journal() {
   const { identities, retired, sessions, journal, joinedAt, openLog } = useStore();
   const pad = useScreenPad();
   const [filter, setFilter] = useState('all');
+  const [visible, setVisible] = useState(PAGE); // paginate the timeline: PAGE rows at a time
 
   const find = (id) => identities.find((i) => i.id === id) || retired.find((i) => i.id === id);
   const sessionById = useMemo(() => {
@@ -123,6 +125,9 @@ export default function Journal() {
     [journal, autoMs, coach, insights],
   );
   const shown = filter === 'all' ? feed : feed.filter((r) => r.identityId === filter);
+  const paged = shown.slice(0, visible);
+  const remaining = shown.length - paged.length;
+  const selectFilter = (id) => { setFilter(id); setVisible(PAGE); }; // reset paging on filter change
 
   // ---------- COLD START — no notes and no auto-milestones ----------
   // A clean empty state: just the invitation. No example/placeholder entries.
@@ -209,7 +214,7 @@ export default function Journal() {
             return (
               <Pressable
                 key={i.id}
-                onPress={() => setFilter(i.id)}
+                onPress={() => selectFilter(i.id)}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: on ? (c ? c.color : t.ink) : t.line, backgroundColor: on && !c ? t.ink : 'transparent' }}
               >
                 {c && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.color }} />}
@@ -227,7 +232,7 @@ export default function Journal() {
         </Text>
       )}
       <View style={{ marginTop: state === 'seeded' ? 0 : 22 }}>
-        {shown.map((row, i) => {
+        {paged.map((row, i) => {
           const idn = row.identityId ? find(row.identityId) : null;
           const c = idn ? colorsFor(idn) : null;
           const linked = row.sessionId ? sessionById[row.sessionId] : null;
@@ -239,10 +244,20 @@ export default function Journal() {
               idn={idn}
               c={c}
               sessionMins={linked ? linked.mins : null}
-              last={i === shown.length - 1}
+              last={i === paged.length - 1 && remaining === 0}
             />
           );
         })}
+        {remaining > 0 && (
+          <Pressable
+            onPress={() => setVisible((v) => v + PAGE)}
+            style={({ pressed }) => ({ marginTop: 4, marginBottom: 8, paddingVertical: 14, alignItems: 'center', borderRadius: t.radii.md, backgroundColor: t.surface2, borderWidth: 1, borderColor: t.line, opacity: pressed ? 0.6 : 1 })}
+          >
+            <Text style={{ fontSize: 14.5, fontFamily: sans(700), color: t.ink }}>
+              Load {Math.min(PAGE, remaining)} more · {remaining} older
+            </Text>
+          </Pressable>
+        )}
         {shown.length === 0 && (
           <Text style={{ fontSize: 14.5, color: t.inkFaint, fontFamily: sans(500), textAlign: 'center', paddingVertical: 24 }}>
             Nothing here for this identity yet.

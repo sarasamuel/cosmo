@@ -81,6 +81,7 @@ export function StoreProvider({ children }) {
   const [addOpen, setAddOpen] = useState(false);
   const [cosmosFocus, setCosmosFocus] = useState(null); // focused identity in the cosmos card
   const [detail, setDetail] = useState(null); // identity whose full Detail screen is open (null = none)
+  const [editing, setEditing] = useState(null); // identity being edited in the name/color sheet (null = closed)
   const [settingsOpen, setSettingsOpen] = useState(false); // Settings screen (pushed from the You-tab gear)
   const [scheduleOpen, setScheduleOpen] = useState(false); // the "arrange your week" flow (supplemental scheduler)
   const [scheduleData, setScheduleData] = useState(null); // { weekStart, plan, constraints } — this week's arranged sessions
@@ -686,6 +687,20 @@ export function StoreProvider({ children }) {
     [identities, showToast]
   );
 
+  // Rest an identity for THIS week — same effect as the rest toggle in the
+  // Re-plan sheet: pause it at 0% (no intention to meet, excluded from the
+  // balance) without retiring it. Reversible by re-planning the week, which
+  // reopens a 0% identity as "resting". Snapshots the plan in force so history
+  // stays honest. desired lives on the raw `identities` state.
+  const restIdentity = useCallback((id) => {
+    const found = identities.find((i) => i.id === id);
+    if (!found || found.desired === 0) return;
+    const next = identities.map((i) => (i.id === id ? { ...i, desired: 0 } : i));
+    setIdentities(next);
+    setPlanHistory((h) => ({ ...h, [weekStartMs()]: Object.fromEntries(next.map((i) => [i.id, i.desired])) }));
+    showToast({ kind: 'notice', message: `${found.name} is resting this week — log freely.` });
+  }, [identities, showToast]);
+
   // End-of-day review: apply several logs at once. entries: [{ id, mins }].
   // Reuses commitLog per entry (so identity bumps / relax / sessions all stay
   // correct), silenced, then shows one summary toast.
@@ -745,6 +760,25 @@ export function StoreProvider({ children }) {
     setDetail(idn);
   }, []);
   const closeDetail = useCallback(() => setDetail(null), []);
+
+  // Edit an identity's name and/or color. A custom `hue` overrides the canonical
+  // `palette` (identityColors prefers palette, so we clear it). Empty name is
+  // ignored. setIdentities triggers the persistence + sync effect on its own.
+  const openEditIdentity = useCallback((idn) => setEditing(idn), []);
+  const closeEditIdentity = useCallback(() => setEditing(null), []);
+  const editIdentity = useCallback((id, changes) => {
+    setIdentities((prev) => prev.map((i) => {
+      if (i.id !== id) return i;
+      const next = { ...i };
+      if (typeof changes.name === 'string' && changes.name.trim()) next.name = changes.name.trim();
+      if (typeof changes.hue === 'number') {
+        next.hue = ((changes.hue % 360) + 360) % 360;
+        next.palette = undefined; // let the custom hue win over a canonical palette
+      }
+      return next;
+    }));
+    setEditing(null);
+  }, []);
 
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
@@ -864,6 +898,7 @@ export function StoreProvider({ children }) {
       setIdentities,
       retired,
       retireIdentity,
+      restIdentity,
       relax: liveRelax,
       sessions,
       planHistory,
@@ -894,6 +929,10 @@ export function StoreProvider({ children }) {
       detail,
       openDetail,
       closeDetail,
+      editing,
+      openEditIdentity,
+      closeEditIdentity,
+      editIdentity,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -942,11 +981,11 @@ export function StoreProvider({ children }) {
       colorsFor: (idn) => identityColors(idn, themeObj),
     }),
     [
-      theme, themeObj, setTheme, started, hydrated, tab, goTo, form, setForm, liveIdentities, retired, retireIdentity,
+      theme, themeObj, setTheme, started, hydrated, tab, goTo, form, setForm, liveIdentities, retired, retireIdentity, restIdentity,
       liveRelax, sessions, planHistory, journal, joinedAt, addJournalEntry, removeJournalEntry, align, week, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned,
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
-      focusCosmos, clearCosmos, detail, openDetail, closeDetail, settingsOpen, openSettings, closeSettings,
+      focusCosmos, clearCosmos, detail, openDetail, closeDetail, editing, openEditIdentity, closeEditIdentity, editIdentity, settingsOpen, openSettings, closeSettings,
       scheduleOpen, openSchedule, closeSchedule, schedule, commitSchedule, clearSchedule, review, openReview, closeReview, commitReview,
       celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn, freeHours, setFreeHours, setRelaxAllowance,
       session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, exportData, deleteAccount, userName, setUserName, authSeen, markAuthSeen,

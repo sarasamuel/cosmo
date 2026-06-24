@@ -31,6 +31,51 @@ describe('scheduleWeek — shape & determinism', () => {
   });
 });
 
+describe('scheduleWeek — learns the logged rhythm (weekday + time of day)', () => {
+  // a session for `id` on a given weekday (0=Sun) at a given clock hour
+  const sess = (id, dow, hour, n = 0) => {
+    const d = new Date(2024, 5, 2); // Sun Jun 2 2024
+    d.setDate(d.getDate() + dow);
+    d.setHours(hour, 0, 0, 0);
+    return { id, sid: `${id}-${dow}-${hour}-${n}`, ts: d.getTime(), mins: 30 };
+  };
+  const writerSessions = (plan) => plan.flatMap((d, idx) => d.sessions.filter((s) => s.identityId === 'writer').map((s) => ({ ...s, idx, dowIndex: d.dowIndex })));
+  const allWindows = { identities: ['writer'], fullness: 'balanced', hoursPerWeek: 3, windows: ['mornings', 'daytime', 'evenings', 'weekends'], shape: 'deep', protect: [] };
+
+  test('an evening-logger gets evening sessions, at its usual hour (not the canonical 7pm)', () => {
+    const sessions = [0, 1, 2, 3, 4].map((dw) => sess('writer', dw, 20)); // always 8pm
+    const got = writerSessions(scheduleWeek(allWindows, { ...base, sessions }));
+    expect(got.length).toBeGreaterThan(0);
+    expect(got.every((s) => s.window === 'evenings')).toBe(true);
+    expect(got.every((s) => s.hour === 20)).toBe(true); // personalized modal hour, not 19
+  });
+
+  test('a morning-logger gets morning sessions at its usual early hour', () => {
+    const sessions = [0, 1, 2, 3, 4].map((dw) => sess('writer', dw, 6)); // always 6am
+    const got = writerSessions(scheduleWeek(allWindows, { ...base, sessions }));
+    expect(got.length).toBeGreaterThan(0);
+    expect(got.every((s) => s.window === 'mornings')).toBe(true);
+    expect(got.every((s) => s.hour === 6)).toBe(true); // not the canonical 8am
+  });
+
+  test('weekday rhythm is honored (the now-fixed dow signal): a Tuesday-logger loads Tuesday most', () => {
+    // spread hours across windows so the time-of-day signal is neutral; only the
+    // weekday (always Tuesday) is distinctive.
+    const sessions = [8, 13, 20, 8, 13, 20].map((h, n) => sess('writer', 2, h, n));
+    const got = writerSessions(scheduleWeek(allWindows, { ...base, sessions }));
+    const byDay = {};
+    got.forEach((s) => { byDay[s.dowIndex] = (byDay[s.dowIndex] || 0) + 1; });
+    const busiest = Object.keys(byDay).sort((a, b) => byDay[b] - byDay[a])[0];
+    expect(Number(busiest)).toBe(2); // Tuesday
+  });
+
+  test('with no history it stays deterministic and uses canonical window hours', () => {
+    const got = writerSessions(scheduleWeek(allWindows, { ...base, sessions: [] }));
+    expect(got.length).toBeGreaterThan(0);
+    got.forEach((s) => expect([8, 13, 19]).toContain(s.hour)); // canonical fallbacks
+  });
+});
+
 describe('scheduleWeek — protect constraints are honored strictly', () => {
   test('rest-day leaves exactly one eligible day truly empty', () => {
     const plan = scheduleWeek(con({ protect: ['rest-day'] }), base);

@@ -16,6 +16,7 @@ import TabBar from './src/components/TabBar';
 import LogSheet from './src/components/LogSheet';
 import WeekPlanSheet from './src/weekly/WeekPlanSheet';
 import AddIdentitySheet from './src/components/AddIdentitySheet';
+import EditIdentitySheet from './src/components/EditIdentitySheet';
 import BackupSheet from './src/components/BackupSheet';
 import CosmosFocusPanel from './src/components/CosmosFocusPanel';
 import IntentionMet from './src/components/IntentionMet';
@@ -73,6 +74,7 @@ function AppShell() {
       <LogSheet />
       <WeekPlanSheet />
       <AddIdentitySheet />
+      <EditIdentitySheet />
       <BackupSheet />
       <IntentionMet idn={celebrate} onClose={clearCelebrate} />
       <AllIntentionsMet open={allMetOpen} form={form} identities={identities} onClose={closeAllMet} onShare={closeAllMet} />
