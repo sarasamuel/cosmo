@@ -8,6 +8,7 @@ import { useStore, useTheme } from '../store/Store';
 import { Button } from './primitives';
 import { sendCode, verifyCode } from '../lib/auth';
 import { SPACING } from '../lib/layout';
+import { useKeyboardHeight } from '../lib/useKeyboard';
 import { serif, sans } from '../theme/fonts';
 
 export default function BackupSheet() {
@@ -22,6 +23,7 @@ export default function BackupSheet() {
   const [error, setError] = useState(null);
   const [mounted, setMounted] = useState(false);
   const slide = useRef(new Animated.Value(0)).current;
+  const kb = useKeyboardHeight(); // lift the sheet so the email/code inputs clear the keyboard
 
   useEffect(() => {
     if (open) {
@@ -89,6 +91,7 @@ export default function BackupSheet() {
             left: 0,
             right: 0,
             bottom: 0,
+            marginBottom: kb,
             maxHeight: sheetMax,
             backgroundColor: t.surface,
             borderTopLeftRadius: 34,

@@ -4,7 +4,7 @@
    store, optionally enables the nightly reminder, and flips the persisted
    `started` flag. */
 import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView, TextInput, Pressable } from 'react-native';
+import { View, Text, ScrollView, TextInput, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Line, Circle } from 'react-native-svg';
 import { useStore, useTheme } from '../store/Store';
@@ -118,7 +118,8 @@ export default function Onboarding() {
         <TourContent onDone={finishTour} />
       ) : (
         <>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingHorizontal: SPACING.onboardingPad }} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingHorizontal: SPACING.onboardingPad }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         {/* STEP 0 — welcome */}
         {step === 0 && (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -290,6 +291,7 @@ export default function Onboarding() {
           </View>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* progress dots */}
       <View style={{ paddingTop: 14, paddingBottom: 20 + insets.bottom, flexDirection: 'row', gap: 7, justifyContent: 'center' }}>

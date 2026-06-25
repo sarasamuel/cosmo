@@ -10,6 +10,7 @@ import { oklch } from '../lib/color';
 import { Glyph, Button } from './primitives';
 import Icon from './Icon';
 import { SPACING } from '../lib/layout';
+import { useKeyboardHeight } from '../lib/useKeyboard';
 import { serif, sans } from '../theme/fonts';
 
 // a spread of distinct, well-separated hues to recolor with
@@ -25,6 +26,7 @@ export default function EditIdentitySheet() {
   const [pickedHue, setPickedHue] = useState(null); // null = keep the current color
   const [mounted, setMounted] = useState(false);
   const slide = useRef(new Animated.Value(0)).current;
+  const kb = useKeyboardHeight(); // lift the sheet so the name input clears the keyboard
 
   useEffect(() => {
     if (open) {
@@ -65,6 +67,7 @@ export default function EditIdentitySheet() {
             left: 0,
             right: 0,
             bottom: 0,
+            marginBottom: kb,
             maxHeight: '90%',
             backgroundColor: t.surface,
             borderTopLeftRadius: 34,

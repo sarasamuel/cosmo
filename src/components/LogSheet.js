@@ -8,6 +8,7 @@ import Icon from './Icon';
 import MinuteDial from './MinuteDial';
 import { noteSuggestions } from '../data/data';
 import { BREAKPOINT, SPACING } from '../lib/layout';
+import { useKeyboardHeight } from '../lib/useKeyboard';
 import { serif, sans } from '../theme/fonts';
 
 const PRESETS = [15, 30, 45, 60, 90];
@@ -26,6 +27,7 @@ export default function LogSheet() {
   const [mounted, setMounted] = useState(false);
 
   const slide = useRef(new Animated.Value(0)).current; // 0 hidden, 1 shown
+  const kb = useKeyboardHeight(); // lift the sheet so the note input clears the keyboard
 
   useEffect(() => {
     if (open) {
@@ -70,6 +72,7 @@ export default function LogSheet() {
             left: 0,
             right: 0,
             bottom: 0,
+            marginBottom: kb,
             maxHeight: sheetMax,
             backgroundColor: t.surface,
             borderTopLeftRadius: 34,

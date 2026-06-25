@@ -5,7 +5,7 @@
 
    On success / skip we set `authSeen` in the store, which routes Root onward. */
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Keyboard } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Line, Circle } from 'react-native-svg';
 import { useStore, useTheme } from '../store/Store';
@@ -105,11 +105,13 @@ export default function AuthFlow() {
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
       <Starfield count={50} />
       <StatusBar />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 40, paddingBottom: 40 + insets.bottom }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
         {stage === 'email' && (
           <View style={{ alignItems: 'stretch' }}>
@@ -193,11 +195,11 @@ export default function AuthFlow() {
               {signedIn ? (
                 <>You’re <Text style={{ fontFamily: serif(500, true) }}>in.</Text></>
               ) : (
-                <>One last <Text style={{ fontFamily: serif(500, true) }}>thing.</Text></>
+                <>What should Cosmo call you?</>
               )}
             </Text>
             <Text style={{ fontSize: 15, color: t.inkSoft, lineHeight: 22, textAlign: 'center', marginBottom: 26 }}>
-              {signedIn ? 'Your email is your key from now on. What should Cosmo call you?' : 'What should Cosmo call you?'}
+              {signedIn ? 'Your email is your key from now on. What should Cosmo call you?' : 'Please enter your name.'}
             </Text>
             <TextInput
               value={name}
@@ -218,6 +220,7 @@ export default function AuthFlow() {
           </View>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }

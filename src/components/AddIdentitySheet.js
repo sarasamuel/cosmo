@@ -9,6 +9,7 @@ import { oklch } from '../lib/color';
 import { Button, Chip } from './primitives';
 import Icon from './Icon';
 import { SPACING } from '../lib/layout';
+import { useKeyboardHeight } from '../lib/useKeyboard';
 import { serif, sans } from '../theme/fonts';
 
 const RELAX_NAME = 'Relaxation Time'; // handled separately, never an "identity"
@@ -22,6 +23,7 @@ export default function AddIdentitySheet() {
   const [custom, setCustom] = useState('');
   const [mounted, setMounted] = useState(false);
   const slide = useRef(new Animated.Value(0)).current;
+  const kb = useKeyboardHeight(); // lift the sheet so the custom-name input clears the keyboard
 
   useEffect(() => {
     if (open) {
@@ -87,6 +89,7 @@ export default function AddIdentitySheet() {
             left: 0,
             right: 0,
             bottom: 0,
+            marginBottom: kb,
             maxHeight: sheetMax,
             backgroundColor: t.surface,
             borderTopLeftRadius: 34,
