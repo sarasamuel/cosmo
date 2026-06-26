@@ -273,7 +273,7 @@ const SLIDES = [
   { key: 'welcome', viz: VizMark, eyebrow: 'Welcome to Cosmo', title: 'You are not one thing.', body: 'You might be a reader, a writer, a coder, a maker, a gardener. Cosmo helps you give real time to every one of your identities.' },
   { key: 'cosmos', viz: VizCosmos, eyebrow: 'Your cosmos', title: 'Tap to log your time.', body: 'Each identity lives in your cosmos. Tap one to log the time you spent tending to it.' },
   { key: 'plan', viz: VizScheduler, eyebrow: 'Plan your week', title: 'Plan your week around real life.', body: 'Let the planner arrange sessions for each identity around the time you actually have.' },
-  { key: 'rhythm', viz: VizRhythm, eyebrow: 'Rhythm', title: 'It’s about showing up.', body: 'A gentle streak counts the days you tend any hobby. Five of seven keeps the week — a missed night never counts against you.' },
+  { key: 'rhythm', viz: VizRhythm, eyebrow: 'Rhythm', title: 'It’s about showing up.', body: 'A gentle streak counts the days you tend any hobby. Logging your time 5 days a week keeps the streak alive.' },
   { key: 'journal', viz: VizJournal, eyebrow: 'Journal', title: 'Note how you’re growing.', body: 'Jot a reflection or mark a milestone for any identity. Over time it becomes the story of you getting better.' },
   { key: 'reflect', viz: VizReflect, eyebrow: 'Reflect with Cosmo', title: 'A quiet look back.', body: 'Cosmo notices the shape of your weeks and reflects it back.' },
 ];
