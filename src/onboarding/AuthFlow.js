@@ -12,7 +12,6 @@ import { useStore, useTheme } from '../store/Store';
 import { Eyebrow, Button } from '../components/primitives';
 import Icon from '../components/Icon';
 import Starfield from '../components/Starfield';
-import StatusBar from '../components/StatusBar';
 import { sendCode, verifyCode, isConfigured } from '../lib/auth';
 import { serif, sans } from '../theme/fonts';
 
@@ -104,7 +103,6 @@ export default function AuthFlow() {
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
       <Starfield count={50} />
-      <StatusBar />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         style={{ flex: 1 }}

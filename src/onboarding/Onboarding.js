@@ -12,7 +12,6 @@ import { CATALOG, IDENTITIES, RELAX, assignHue } from '../data/data';
 import { Eyebrow, Button, Chip } from '../components/primitives';
 import Icon from '../components/Icon';
 import Starfield from '../components/Starfield';
-import StatusBar from '../components/StatusBar';
 import CosmosViz from '../viz/CosmosViz';
 import ConstellationViz from '../viz/ConstellationViz';
 import OnbCadence from './OnbCadence';
@@ -75,7 +74,7 @@ export default function Onboarding() {
   // both the reveal preview and `seedOnboarding`, so what you see is what you get.
   const builtIdentities = useMemo(() => {
     const base = Math.floor(100 / Math.max(1, selected.length) / 5) * 5;
-    const pctFor = (n) => (alloc[n] != null ? alloc[n] : base);
+    const pctFor = (n) => Math.round(alloc[n] != null ? alloc[n] : base);
     const acc = [];
     selected.forEach((name) => {
       const canon = IDENTITIES.find((i) => i.name.toLowerCase() === name.toLowerCase());
@@ -112,7 +111,6 @@ export default function Onboarding() {
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
       <Starfield count={60} />
-      <StatusBar />
 
       {phase === 'tour' ? (
         <TourContent onDone={finishTour} />

@@ -1,7 +1,7 @@
 /* Onboarding step 4 — allocate % across the chosen identities. (Rest is set
    separately in its own step now, so it isn't a row here.) */
-import React from 'react';
-import { View, Text } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Pressable } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useTheme } from '../store/Store';
 import { Card, Eyebrow, Button, dotStyle } from '../components/primitives';
@@ -11,6 +11,8 @@ import { CADENCE, fmtDur, personaColor } from './helpers';
 export default function OnbAllocate({ selected, cadence, freeHours, alloc, onSetAlloc, onBack, onContinue }) {
   const { t } = useTheme();
   const cfg = CADENCE[cadence];
+  const [unit, setUnit] = useState('percent'); // 'percent' | 'hours' — view/edit units; alloc is always stored as %
+  const hoursMode = unit === 'hours';
 
   // Allocations live in the parent (keyed by name) so the final cosmos can read
   // them; an unset persona defaults to an even split. Same default the parent's
@@ -20,16 +22,39 @@ export default function OnbAllocate({ selected, cadence, freeHours, alloc, onSet
   const total = rows.reduce((s, r) => s + r.pct, 0);
   const set = (name, v) => onSetAlloc({ ...alloc, [name]: v });
 
+  // alloc stays canonically a %; Hours mode just edits the same value in hour
+  // units, converting against the period's free hours.
+  const MAX_PCT = 50; // a single identity can't take more than half via the slider
+  const pctToHours = (pct) => (freeHours * pct) / 100;
+  const hoursToPct = (h) => (freeHours > 0 ? (h / freeHours) * 100 : 0);
+  const hourStep = freeHours <= 10 ? 0.5 : freeHours <= 60 ? 1 : 5;
+  const balanced = Math.round(total) === 100;
+
   return (
     <View style={{ flex: 1, paddingTop: 50 }}>
       <Eyebrow>Step four</Eyebrow>
       <Text style={{ fontFamily: serif(500), fontSize: 33, color: t.ink, marginTop: 10, marginBottom: 8 }}>Your first week</Text>
-      <Text style={{ fontSize: 16, color: t.inkSoft, marginBottom: 8, lineHeight: 24 }}>
+      <Text style={{ fontSize: 16, color: t.inkSoft, marginBottom: 12, lineHeight: 24 }}>
         Divide this week’s {fmtDur(freeHours)} {cfg.noun} between them. You’ll choose again next week — nothing here is permanent.
       </Text>
-      <Text style={{ fontSize: 15, fontFamily: sans(700), color: total === 100 ? t.good : t.warn, marginBottom: 18 }}>
-        {total}% allocated {total === 100 ? '· balanced' : ''}
-      </Text>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+        <Text style={{ fontSize: 15, fontFamily: sans(700), color: balanced ? t.good : t.warn }}>
+          {hoursMode ? `${fmtDur(pctToHours(total))} of ${fmtDur(freeHours)}` : `${Math.round(total)}% allocated`}
+          {balanced ? ' · balanced' : ''}
+        </Text>
+        {/* Percent / Hours unit toggle */}
+        <View style={{ flexDirection: 'row', backgroundColor: t.surface2, borderWidth: 1, borderColor: t.line, borderRadius: 999, padding: 4 }}>
+          {[['percent', 'Percent'], ['hours', 'Hours']].map(([key, label]) => {
+            const on = unit === key;
+            return (
+              <Pressable key={key} onPress={() => setUnit(key)} style={[{ paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, backgroundColor: on ? t.surface : 'transparent' }, on ? t.shadow.sm : null]}>
+                <Text style={{ fontSize: 13, fontFamily: sans(700), color: on ? t.ink : t.inkFaint }}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
 
       <Card style={{ paddingHorizontal: 22, paddingVertical: 6 }}>
         {rows.map((r, k) => (
@@ -38,19 +63,20 @@ export default function OnbAllocate({ selected, cadence, freeHours, alloc, onSet
               <View style={dotStyle(18, r.color)} />
               <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink, flex: 1 }}>{r.name}</Text>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontFamily: serif(500), fontSize: 20, color: t.ink }}>{r.pct}%</Text>
+                <Text style={{ fontFamily: serif(500), fontSize: 20, color: t.ink }}>
+                  {hoursMode ? fmtDur(pctToHours(r.pct)) : `${Math.round(r.pct)}%`}
+                </Text>
                 <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: t.inkFaint, marginTop: 1 }}>
-                  {fmtDur((freeHours * r.pct) / 100)}
-                  {cfg.per}
+                  {hoursMode ? `${Math.round(r.pct)}%` : `${fmtDur(pctToHours(r.pct))}${cfg.per}`}
                 </Text>
               </View>
             </View>
             <Slider
               minimumValue={0}
-              maximumValue={50}
-              step={5}
-              value={r.pct}
-              onValueChange={(v) => set(r.name, v)}
+              maximumValue={hoursMode ? pctToHours(MAX_PCT) : MAX_PCT}
+              step={hoursMode ? hourStep : 5}
+              value={hoursMode ? pctToHours(r.pct) : r.pct}
+              onValueChange={(v) => set(r.name, hoursMode ? Math.round(Math.min(MAX_PCT, hoursToPct(v))) : v)}
               minimumTrackTintColor={r.color}
               maximumTrackTintColor={t.surface3}
               thumbTintColor={r.color}

@@ -16,7 +16,10 @@
     "ios": {
       "supportsTablet": true,
       "userInterfaceStyle": "automatic",
-      "bundleIdentifier": "com.anonymous.cosmo"
+      "bundleIdentifier": "com.cosmoapp.cosmo",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "userInterfaceStyle": "automatic",
@@ -34,6 +37,17 @@
       "expo-font",
       "expo-notifications",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e05288e8-ef15-45c5-9a29-543a8361a0c4"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e05288e8-ef15-45c5-9a29-543a8361a0c4"
+    }
   }
 }

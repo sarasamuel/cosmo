@@ -11,7 +11,6 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 
 import Backdrop from './src/components/Backdrop';
 import Starfield from './src/components/Starfield';
-import StatusBar from './src/components/StatusBar';
 import TabBar from './src/components/TabBar';
 import LogSheet from './src/components/LogSheet';
 import WeekPlanSheet from './src/weekly/WeekPlanSheet';
@@ -46,7 +45,6 @@ function AppShell() {
       <Backdrop />
       <Starfield count={72} />
       <View style={{ flex: 1, paddingTop: insets.top }}>
-        <StatusBar />
         <View style={{ flex: 1 }}>
           {/* The end-of-day review (from the reminder tap) and the Detail screen
               both take over the content area; the review also hides the tab bar
@@ -92,7 +90,7 @@ function Root() {
   }
   return (
     <>
-      <ExpoStatusBar style={theme === 'light' ? 'dark' : 'light'} hidden />
+      <ExpoStatusBar style={theme === 'light' ? 'dark' : 'light'} />
       {/* auth entry first (sign in or skip) → onboarding → app */}
       {!authSeen ? <AuthFlow /> : started ? <AppShell /> : <Onboarding />}
     </>
@@ -144,7 +142,7 @@ function SplashOverlay({ fontsLoaded }) {
 export default function App() {
   const [fontsLoaded] = useAppFonts();
   return (
-    <ErrorBoundary fallback={(err, reset) => <AppCrash onRetry={reset} />}>
+    <ErrorBoundary fallback={(_err, reset) => <AppCrash onRetry={reset} />}>
       <SafeAreaProvider>
         <StoreProvider>
           {/* mount the store immediately so hydration runs behind the splash;

@@ -594,7 +594,11 @@ export function StoreProvider({ children }) {
     () =>
       identities.map((i) => ({
         ...i,
-        actual: Math.min(60, weekPoints(sessions, i.id)),
+        // desired/actual are whole-number percentages everywhere they're shown;
+        // round here (the one list every screen reads) so legacy fractional data
+        // and any derived splits display cleanly.
+        desired: Math.round(i.desired),
+        actual: Math.round(Math.min(60, weekPoints(sessions, i.id))),
         lastActiveDays: daysSinceLast(sessions, i.id, i.lastActiveDays),
         streak: dayStreak(sessions, i.id),
       })),
@@ -603,7 +607,8 @@ export function StoreProvider({ children }) {
   const liveRelax = useMemo(
     () => ({
       ...relax,
-      actual: Math.min(relax.desired, weekPoints(sessions, 'relax')),
+      desired: Math.round(relax.desired),
+      actual: Math.round(Math.min(relax.desired, weekPoints(sessions, 'relax'))),
       lastActiveDays: daysSinceLast(sessions, 'relax', relax.lastActiveDays),
     }),
     [relax, sessions, currentWeek]
@@ -747,7 +752,7 @@ export function StoreProvider({ children }) {
   const openPlan = useCallback(() => setPlanOpen(true), []);
   const closePlan = useCallback(() => setPlanOpen(false), []);
   const commitWeekPlan = useCallback((plan) => {
-    setIdentities((prev) => prev.map((i) => (plan[i.id] != null ? { ...i, desired: plan[i.id] } : i)));
+    setIdentities((prev) => prev.map((i) => (plan[i.id] != null ? { ...i, desired: Math.round(plan[i.id]) } : i)));
     // snapshot this week's plan so completed weeks keep the intention they were
     // actually planned with (keyed by week start; re-committing overwrites it).
     setPlanHistory((h) => ({ ...h, [weekStartMs()]: { ...plan } }));

@@ -1,7 +1,7 @@
 /* End-of-day review — opened when the user taps the nightly reminder. Tap an
    identity to log its "usual" minutes (adjustable with a stepper), then Save
-   today applies them all at once via the store's commitReview. Cards vs List is
-   just a density toggle over the same set. Mounted full-screen by AppShell. */
+   today applies them all at once via the store's commitReview. Mounted
+   full-screen by AppShell. */
 import React, { useState } from 'react';
 import { View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,7 +45,7 @@ function StepBtn({ dir, onPress }) {
   );
 }
 
-function Stepper({ mins, color, onAdjust }) {
+function Stepper({ mins, onAdjust }) {
   const { t } = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -59,10 +59,9 @@ function Stepper({ mins, color, onAdjust }) {
   );
 }
 
-function ReviewItem({ idn, colorsFor, view, selected, mins, onToggle, onAdjust }) {
+function ReviewItem({ idn, colorsFor, selected, mins, onToggle, onAdjust }) {
   const { t } = useTheme();
   const c = colorsFor(idn);
-  const list = view === 'list';
   const { width } = useWindowDimensions();
   const twoCol = width >= BREAKPOINT.twoCol;
 
@@ -70,37 +69,35 @@ function ReviewItem({ idn, colorsFor, view, selected, mins, onToggle, onAdjust }
     <Pressable
       onPress={onToggle}
       style={({ pressed }) => ({
-        width: list ? '100%' : twoCol ? '48%' : '100%',
-        flexGrow: list ? 0 : 1,
+        width: twoCol ? '48%' : '100%',
+        flexGrow: 1,
         borderRadius: t.radii.md,
         borderWidth: 1.5,
         borderColor: selected ? c.color : t.line,
         backgroundColor: selected ? c.soft : t.surface,
-        paddingVertical: list ? 14 : 16,
+        paddingVertical: 16,
         paddingHorizontal: 16,
         opacity: pressed ? 0.85 : 1,
       })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <Glyph char={idn.glyph} size={list ? 36 : 40} fontSize={list ? 16 : 18} color={c.color} />
+        <Glyph char={idn.glyph} size={40} fontSize={18} color={c.color} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text numberOfLines={1} style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>{idn.name}</Text>
           <Text numberOfLines={1} style={{ fontSize: 12.5, fontFamily: sans(600), color: selected ? c.color : t.inkFaint, marginTop: 1 }}>
             {selected ? `+${mins}m today` : `usually ${usualMins(idn)}m`}
           </Text>
         </View>
-        {/* list view keeps the stepper inline on the right; cards drop it below */}
-        {list && selected && <Stepper mins={mins} color={c.color} onAdjust={onAdjust} />}
         {selected && (
-          <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: c.color, alignItems: 'center', justifyContent: 'center', marginLeft: list ? 10 : 0 }}>
+          <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: c.color, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="check" size={13} stroke={2.6} color="#fff" />
           </View>
         )}
       </View>
 
-      {!list && selected && (
+      {selected && (
         <View style={{ marginTop: 14 }}>
-          <Stepper mins={mins} color={c.color} onAdjust={onAdjust} />
+          <Stepper mins={mins} onAdjust={onAdjust} />
         </View>
       )}
     </Pressable>
@@ -113,7 +110,6 @@ export default function EndOfDayReview({ onClose }) {
   const insets = useSafeAreaInsets();
   const pad = useScreenPad();
 
-  const [view, setView] = useState('cards');
   const [picks, setPicks] = useState({}); // id -> minutes (present === selected)
 
   const weekday = WEEKDAYS[new Date().getDay()];
@@ -149,25 +145,12 @@ export default function EndOfDayReview({ onClose }) {
           Tap whoever you gave time to. We’ll assume your usual — adjust only if you like.
         </Text>
 
-        {/* Cards / List density toggle */}
-        <View style={{ flexDirection: 'row', alignSelf: 'flex-end', backgroundColor: t.surface2, borderWidth: 1, borderColor: t.line, borderRadius: 999, padding: 4, marginBottom: 18 }}>
-          {['cards', 'list'].map((v) => {
-            const on = view === v;
-            return (
-              <Pressable key={v} onPress={() => setView(v)} style={[{ paddingVertical: 7, paddingHorizontal: 16, borderRadius: 999, backgroundColor: on ? t.surface : 'transparent' }, on ? t.shadow.sm : null]}>
-                <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: on ? t.ink : t.inkFaint, textTransform: 'capitalize' }}>{v}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 18 }}>
           {logTargets.map((idn) => (
             <ReviewItem
               key={idn.id}
               idn={idn}
               colorsFor={colorsFor}
-              view={view}
               selected={picks[idn.id] != null}
               mins={picks[idn.id]}
               onToggle={() => toggle(idn)}

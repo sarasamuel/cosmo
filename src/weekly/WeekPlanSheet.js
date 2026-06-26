@@ -20,6 +20,7 @@ export default function WeekPlanSheet() {
   const [plan, setPlan] = useState({});
   const [resting, setResting] = useState({}); // id -> paused for this week (excluded from the total)
   const [hours, setHours] = useState(freeHours); // local until "Lock in" (avoids per-drag persistence)
+  const [unit, setUnit] = useState('percent'); // 'percent' | 'hours' — view/edit units; plan is always stored as %
   const [mounted, setMounted] = useState(false);
   const slide = useRef(new Animated.Value(0)).current;
 
@@ -65,6 +66,13 @@ export default function WeekPlanSheet() {
   };
   // a % of the week's free hours, formatted ("35h" pool, 20% → "7h")
   const hoursFor = (pct) => fmtMins(Math.round((hours * (pct || 0)) / 100) * 60);
+  // plan stays canonically a %; Hours mode just edits the same value in hour
+  // units, converting against this week's free-hours pool.
+  const hoursMode = unit === 'hours';
+  const MAX_PCT = 50; // a single identity can't take more than half via the slider
+  const pctToHoursNum = (pct) => (hours * (pct || 0)) / 100;
+  const hoursToPct = (h) => (hours > 0 ? (h / hours) * 100 : 0);
+  const hourStep = hours <= 10 ? 0.5 : hours <= 60 ? 1 : 5;
   // rested identities commit as 0% (paused for the week); the rest keep their value
   const commit = () => {
     const next = {};
@@ -146,6 +154,21 @@ export default function WeekPlanSheet() {
             </View>
           </Card>
 
+          {/* Percent / Hours unit toggle */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Text style={{ fontSize: 13, fontFamily: sans(700), color: t.inkFaint }}>Allocate in</Text>
+            <View style={{ flexDirection: 'row', backgroundColor: t.surface2, borderWidth: 1, borderColor: t.line, borderRadius: 999, padding: 4 }}>
+              {[['percent', 'Percent'], ['hours', 'Hours']].map(([key, label]) => {
+                const on = unit === key;
+                return (
+                  <Pressable key={key} onPress={() => setUnit(key)} style={[{ paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, backgroundColor: on ? t.surface : 'transparent' }, on ? t.shadow.sm : null]}>
+                    <Text style={{ fontSize: 13, fontFamily: sans(700), color: on ? t.ink : t.inkFaint }}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
           <Card style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 8 }}>
             {identities.map((i, k) => {
               const ll = livedLast(i.id);
@@ -174,10 +197,18 @@ export default function WeekPlanSheet() {
                       <>
                         <View style={{ alignItems: 'flex-end' }}>
                           <Text style={{ fontFamily: serif(500), fontSize: 21, color: t.ink }}>
-                            {plan[i.id] || 0}
-                            <Text style={{ fontSize: 13, color: t.inkFaint }}>%</Text>
+                            {hoursMode ? (
+                              hoursFor(plan[i.id])
+                            ) : (
+                              <>
+                                {plan[i.id] || 0}
+                                <Text style={{ fontSize: 13, color: t.inkFaint }}>%</Text>
+                              </>
+                            )}
                           </Text>
-                          <Text style={{ fontSize: 11.5, fontFamily: sans(600), color: t.inkFaint, marginTop: 1 }}>{hoursFor(plan[i.id])}/wk</Text>
+                          <Text style={{ fontSize: 11.5, fontFamily: sans(600), color: t.inkFaint, marginTop: 1 }}>
+                            {hoursMode ? `${Math.round(plan[i.id] || 0)}%` : `${hoursFor(plan[i.id])}/wk`}
+                          </Text>
                         </View>
                         <Pressable
                           onPress={() => rest(i.id)}
@@ -192,10 +223,10 @@ export default function WeekPlanSheet() {
                   {!isResting && (
                     <Slider
                       minimumValue={0}
-                      maximumValue={50}
-                      step={5}
-                      value={plan[i.id] || 0}
-                      onValueChange={(v) => set(i.id, v)}
+                      maximumValue={hoursMode ? pctToHoursNum(MAX_PCT) : 50}
+                      step={hoursMode ? hourStep : 5}
+                      value={hoursMode ? pctToHoursNum(plan[i.id] || 0) : plan[i.id] || 0}
+                      onValueChange={(v) => set(i.id, hoursMode ? Math.round(Math.min(MAX_PCT, hoursToPct(v))) : v)}
                       minimumTrackTintColor={c.color}
                       maximumTrackTintColor={t.surface3}
                       thumbTintColor={c.color}
