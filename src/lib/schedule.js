@@ -220,59 +220,6 @@ export function scheduleWeek(constraints, ctx = {}) {
   return days;
 }
 
-/* Move ONE session to a different time window, deterministically, honoring the
-   same protect constraints. If another session already holds the target window
-   that day, the two SWAP windows (rather than silently refusing) — so a tap
-   always has a visible effect even on a full day. Returns a new plan (or the
-   same one if the move is impossible: protected window, or already there). */
-export function retimeSession(plan, dayIdx, sessIdx, windowKey, constraints) {
-  const protect = new Set((constraints && constraints.protect) || []);
-  if (windowKey === 'mornings' && protect.has('calm-mornings')) return plan;
-  if (windowKey === 'evenings' && protect.has('family-evenings')) return plan;
-  const win = TIME_WINDOWS[windowKey];
-  if (!win) return plan;
-  const next = plan.map((d) => ({ ...d, sessions: d.sessions.map((s) => ({ ...s })) }));
-  const day = next[dayIdx];
-  const me = day && day.sessions[sessIdx];
-  if (!me || me.window === windowKey) return plan; // nothing to do
-  const setWindow = (s, key) => {
-    const w = TIME_WINDOWS[key] || { hour: s.hour };
-    return { ...s, window: key, hour: w.hour, min: 0, time: clockLabel(w.hour) };
-  };
-  // another session in the target window → swap it into mine, so neither stacks
-  const otherIdx = day.sessions.findIndex((s, i) => i !== sessIdx && s.window === windowKey);
-  if (otherIdx !== -1) {
-    // can't swap into a window that's protected for the displaced session's move
-    if (me.window === 'mornings' && protect.has('calm-mornings')) return plan;
-    if (me.window === 'evenings' && protect.has('family-evenings')) return plan;
-    day.sessions[otherIdx] = setWindow(day.sessions[otherIdx], me.window);
-  }
-  day.sessions[sessIdx] = setWindow(me, windowKey);
-  day.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b)));
-  return next;
-}
-
-/* Set ONE session to an exact hand-picked time (hour 0–23, minute 0–59), then
-   re-sort the day so it lands in chronological place. The window is derived from
-   the hour to keep protect logic + ordering consistent; a time in a protected
-   window (calm mornings / family evenings) is refused (returns the same plan).
-   Unlike retimeSession this never swaps — multiple sessions can share a window
-   at different clock times once the user is placing them by hand. */
-export function setSessionTime(plan, dayIdx, sessIdx, hour, minute, constraints) {
-  const protect = new Set((constraints && constraints.protect) || []);
-  const windowKey = hourToWindow(hour);
-  if (windowKey === 'mornings' && protect.has('calm-mornings')) return plan;
-  if (windowKey === 'evenings' && protect.has('family-evenings')) return plan;
-  const next = plan.map((d) => ({ ...d, sessions: d.sessions.map((s) => ({ ...s })) }));
-  const day = next[dayIdx];
-  const me = day && day.sessions[sessIdx];
-  if (!me) return plan;
-  const m = Math.max(0, Math.min(59, minute || 0));
-  day.sessions[sessIdx] = { ...me, window: windowKey, hour, min: m, time: clockLabelHM(hour, m) };
-  day.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b)));
-  return next;
-}
-
 /* Apply a day + exact-time edit in ONE step (the "Enter" commit of the retiming
    panel): move the session to `toDay` if it changed and set its hand-picked time,
    keeping that time across the move (unlike moveSessionToDay, which re-windows).
@@ -296,38 +243,6 @@ export function placeSession(plan, fromDay, sessIdx, toDay, hour, minute, constr
   } else {
     dst.sessions[sessIdx] = updated;
   }
-  dst.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b)));
-  return next;
-}
-
-const windowAllowed = (key, protect) => {
-  if (key === 'mornings' && protect.has('calm-mornings')) return false;
-  if (key === 'evenings' && protect.has('family-evenings')) return false;
-  return true;
-};
-
-/* Move ONE session to a different DAY (the tap-to-move equivalent of dragging).
-   Picks a sensible window on the destination — keeps the current time if it's
-   allowed and free, else the first allowed/free window — honoring protect and
-   never landing on a rest day. Returns a new plan (or the same if it can't). */
-export function moveSessionToDay(plan, fromDay, sessIdx, toDay, constraints) {
-  if (fromDay === toDay) return plan;
-  const protect = new Set((constraints && constraints.protect) || []);
-  const next = plan.map((d) => ({ ...d, sessions: d.sessions.map((s) => ({ ...s })) }));
-  const src = next[fromDay];
-  const dst = next[toDay];
-  if (!src || !dst || dst.rest || !src.sessions[sessIdx]) return plan;
-  const sess = src.sessions[sessIdx];
-  const taken = new Set(dst.sessions.map((s) => s.window));
-  let win = sess.window;
-  if (!windowAllowed(win, protect) || taken.has(win)) {
-    win = ORDER.find((w) => windowAllowed(w, protect) && !taken.has(w))
-      || (windowAllowed(sess.window, protect) ? sess.window : ORDER.find((w) => windowAllowed(w, protect)));
-  }
-  if (!win) return plan;
-  const w = TIME_WINDOWS[win];
-  src.sessions.splice(sessIdx, 1);
-  dst.sessions.push({ ...sess, window: win, hour: w.hour, min: 0, time: clockLabel(w.hour) });
   dst.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b)));
   return next;
 }
