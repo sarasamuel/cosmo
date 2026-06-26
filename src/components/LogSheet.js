@@ -144,7 +144,7 @@ export default function LogSheet() {
                           {i.name}
                         </Text>
                         <Text numberOfLines={1} style={{ fontSize: 12.5, fontFamily: sans(600), color: on ? c.color : t.inkFaint }}>
-                          {i.lastActiveDays === 0 ? 'active today' : `${i.lastActiveDays}d since last`}
+                          {i.lastActiveDays >= 99 ? 'not logged yet' : i.lastActiveDays === 0 ? 'active today' : `${i.lastActiveDays}d since last`}
                         </Text>
                       </View>
                       {on && (

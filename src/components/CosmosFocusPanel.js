@@ -14,6 +14,7 @@ import { serif, sans } from '../theme/fonts';
 // "last tended" descriptor from days since the last logged session.
 function lastTended(days) {
   if (days == null) return null;
+  if (days >= 99) return 'not tended yet'; // 99 is the seed sentinel for a never-logged identity
   if (days === 0) return 'tended today';
   if (days === 1) return 'last tended yesterday';
   return `last tended ${days}d ago`;
