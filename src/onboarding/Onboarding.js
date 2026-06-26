@@ -73,7 +73,7 @@ export default function Onboarding() {
   // colors stay on-brand; typed-in ones get a fresh, well-separated hue. Fed to
   // both the reveal preview and `seedOnboarding`, so what you see is what you get.
   const builtIdentities = useMemo(() => {
-    const base = Math.floor(100 / Math.max(1, selected.length) / 5) * 5;
+    const base = Math.floor(Math.max(0, 100 - restPct) / Math.max(1, selected.length) / 5) * 5;
     const pctFor = (n) => Math.round(alloc[n] != null ? alloc[n] : base);
     const acc = [];
     selected.forEach((name) => {
@@ -86,7 +86,7 @@ export default function Onboarding() {
       }
     });
     return acc;
-  }, [selected, alloc]);
+  }, [selected, alloc, restPct]);
 
   const toggle = (name) => setSelected((s) => (s.includes(name) ? s.filter((x) => x !== name) : [...s, name]));
   const addCustom = () => {
@@ -215,7 +215,7 @@ export default function Onboarding() {
 
         {/* STEP 4 — allocate */}
         {step === 4 && (
-          <OnbAllocate selected={selected} cadence={cadence} freeHours={freeHours} alloc={alloc} onSetAlloc={setAlloc} onBack={() => setStep(3)} onContinue={next} />
+          <OnbAllocate selected={selected} cadence={cadence} freeHours={freeHours} alloc={alloc} onSetAlloc={setAlloc} restPct={restPct} onSetRest={setRestPct} onBack={() => setStep(3)} onContinue={next} />
         )}
 
         {/* STEP 5 — reveal */}

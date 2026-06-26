@@ -13,13 +13,14 @@ import { serif, sans } from '../theme/fonts';
 
 export default function WeekPlanSheet() {
   const { t, colorsFor } = useTheme();
-  const { planOpen: open, week, identities, sessions, freeHours, setFreeHours, closePlan: onClose, commitWeekPlan: onCommit } = useStore();
+  const { planOpen: open, week, identities, relax, sessions, freeHours, setFreeHours, setRelaxAllowance, closePlan: onClose, commitWeekPlan: onCommit } = useStore();
   const { height } = useWindowDimensions();
   const lastWeekRef = lastWeekStartMs();
 
   const [plan, setPlan] = useState({});
   const [resting, setResting] = useState({}); // id -> paused for this week (excluded from the total)
   const [hours, setHours] = useState(freeHours); // local until "Lock in" (avoids per-drag persistence)
+  const [relaxPlan, setRelaxPlan] = useState(0); // Relaxation's share — part of the same 100% pie as identities
   const [unit, setUnit] = useState('percent'); // 'percent' | 'hours' — view/edit units; plan is always stored as %
   const [mounted, setMounted] = useState(false);
   const slide = useRef(new Animated.Value(0)).current;
@@ -35,6 +36,7 @@ export default function WeekPlanSheet() {
       setPlan(seed);
       setResting(restSeed);
       setHours(freeHours);
+      setRelaxPlan(relax.desired);
       setMounted(true);
     }
     Animated.timing(slide, {
@@ -44,12 +46,13 @@ export default function WeekPlanSheet() {
     }).start(({ finished }) => {
       if (finished && !open) setMounted(false);
     });
-  }, [open, identities, freeHours, slide]);
+  }, [open, identities, relax, freeHours, slide]);
 
   if (!mounted) return null;
 
-  // resting identities don't claim any of the week, so they're left out of the total
-  const total = identities.reduce((s, i) => s + (resting[i.id] ? 0 : plan[i.id] || 0), 0);
+  // resting identities don't claim any of the week, so they're left out of the
+  // total; Relaxation shares the same 100% pie.
+  const total = identities.reduce((s, i) => s + (resting[i.id] ? 0 : plan[i.id] || 0), 0) + (relaxPlan || 0);
   const balanced = total === 100;
   const set = (id, v) => setPlan((p) => ({ ...p, [id]: v }));
   // last calendar week's lived points for this identity, from real sessions —
@@ -80,6 +83,7 @@ export default function WeekPlanSheet() {
       next[i.id] = resting[i.id] ? 0 : plan[i.id] || 0;
     });
     if (hours !== freeHours) setFreeHours(hours); // persist the adjusted free hours
+    setRelaxAllowance(relaxPlan); // Relaxation's share is committed alongside the identities
     onCommit(next);
   };
   const [start, end] = week.label.split(' – ');
@@ -235,6 +239,42 @@ export default function WeekPlanSheet() {
                 </View>
               );
             })}
+
+            {/* Relaxation — part of the same 100% pie, but never "rested" (it is the rest) */}
+            <View style={{ paddingVertical: 15, borderTopWidth: 1, borderTopColor: t.line2 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 11 }}>
+                <Glyph char="♾" size={34} fontSize={18} color={t.id.relax.color} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>Relaxation</Text>
+                  <Text style={{ fontSize: 12, color: t.inkFaint, fontFamily: sans(600) }}>guilt-free time to recharge</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ fontFamily: serif(500), fontSize: 21, color: t.ink }}>
+                    {hoursMode ? (
+                      hoursFor(relaxPlan)
+                    ) : (
+                      <>
+                        {relaxPlan || 0}
+                        <Text style={{ fontSize: 13, color: t.inkFaint }}>%</Text>
+                      </>
+                    )}
+                  </Text>
+                  <Text style={{ fontSize: 11.5, fontFamily: sans(600), color: t.inkFaint, marginTop: 1 }}>
+                    {hoursMode ? `${Math.round(relaxPlan || 0)}%` : `${hoursFor(relaxPlan)}/wk`}
+                  </Text>
+                </View>
+              </View>
+              <Slider
+                minimumValue={0}
+                maximumValue={hoursMode ? pctToHoursNum(MAX_PCT) : 50}
+                step={hoursMode ? hourStep : 5}
+                value={hoursMode ? pctToHoursNum(relaxPlan || 0) : relaxPlan || 0}
+                onValueChange={(v) => setRelaxPlan(hoursMode ? Math.round(Math.min(MAX_PCT, hoursToPct(v))) : v)}
+                minimumTrackTintColor={t.id.relax.color}
+                maximumTrackTintColor={t.surface3}
+                thumbTintColor={t.id.relax.color}
+              />
+            </View>
           </Card>
 
           <Button onPress={commit} style={{ marginTop: 18 }} textStyle={{ color: t.bg }}>

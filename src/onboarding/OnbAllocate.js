@@ -1,5 +1,5 @@
-/* Onboarding step 4 — allocate % across the chosen identities. (Rest is set
-   separately in its own step now, so it isn't a row here.) */
+/* Onboarding step 4 — allocate % across the chosen identities plus Relaxation,
+   all sharing one 100% pie (the rest step seeds the relaxation value). */
 import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import Slider from '@react-native-community/slider';
@@ -8,19 +8,26 @@ import { Card, Eyebrow, Button, dotStyle } from '../components/primitives';
 import { serif, sans } from '../theme/fonts';
 import { CADENCE, fmtDur, personaColor } from './helpers';
 
-export default function OnbAllocate({ selected, cadence, freeHours, alloc, onSetAlloc, onBack, onContinue }) {
+export default function OnbAllocate({ selected, cadence, freeHours, alloc, onSetAlloc, restPct, onSetRest, onBack, onContinue }) {
   const { t } = useTheme();
   const cfg = CADENCE[cadence];
   const [unit, setUnit] = useState('percent'); // 'percent' | 'hours' — view/edit units; alloc is always stored as %
   const hoursMode = unit === 'hours';
 
   // Allocations live in the parent (keyed by name) so the final cosmos can read
-  // them; an unset persona defaults to an even split. Same default the parent's
-  // identity builder uses, so the totals shown here match what's committed.
-  const base = Math.floor(100 / Math.max(1, selected.length) / 5) * 5;
-  const rows = selected.map((n) => ({ name: n, color: personaColor(n, selected.indexOf(n), t), pct: alloc[n] != null ? alloc[n] : base }));
-  const total = rows.reduce((s, r) => s + r.pct, 0);
-  const set = (name, v) => onSetAlloc({ ...alloc, [name]: v });
+  // them; an unset persona defaults to an even split of whatever isn't reserved
+  // for rest. Same default the parent's identity builder uses, so the totals
+  // shown here match what's committed. Relaxation rides in the same 100% pie.
+  const base = Math.floor(Math.max(0, 100 - restPct) / Math.max(1, selected.length) / 5) * 5;
+  const rows = selected.map((n) => ({
+    key: n,
+    name: n,
+    color: personaColor(n, selected.indexOf(n), t),
+    pct: alloc[n] != null ? alloc[n] : base,
+    set: (v) => onSetAlloc({ ...alloc, [n]: v }),
+  }));
+  const allRows = [...rows, { key: '__relax', name: 'Relaxation', color: t.id.relax.color, pct: restPct, set: onSetRest }];
+  const total = allRows.reduce((s, r) => s + r.pct, 0);
 
   // alloc stays canonically a %; Hours mode just edits the same value in hour
   // units, converting against the period's free hours.
@@ -57,8 +64,8 @@ export default function OnbAllocate({ selected, cadence, freeHours, alloc, onSet
       </View>
 
       <Card style={{ paddingHorizontal: 22, paddingVertical: 6 }}>
-        {rows.map((r, k) => (
-          <View key={r.name} style={{ paddingVertical: 16, borderTopWidth: k ? 1 : 0, borderTopColor: t.line2 }}>
+        {allRows.map((r, k) => (
+          <View key={r.key} style={{ paddingVertical: 16, borderTopWidth: k ? 1 : 0, borderTopColor: t.line2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
               <View style={dotStyle(18, r.color)} />
               <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.ink, flex: 1 }}>{r.name}</Text>
@@ -76,7 +83,7 @@ export default function OnbAllocate({ selected, cadence, freeHours, alloc, onSet
               maximumValue={hoursMode ? pctToHours(MAX_PCT) : MAX_PCT}
               step={hoursMode ? hourStep : 5}
               value={hoursMode ? pctToHours(r.pct) : r.pct}
-              onValueChange={(v) => set(r.name, hoursMode ? Math.round(Math.min(MAX_PCT, hoursToPct(v))) : v)}
+              onValueChange={(v) => r.set(hoursMode ? Math.round(Math.min(MAX_PCT, hoursToPct(v))) : v)}
               minimumTrackTintColor={r.color}
               maximumTrackTintColor={t.surface3}
               thumbTintColor={r.color}
