@@ -1,7 +1,7 @@
 /* Log-session bottom sheet, ported from logsheet.jsx. Step 1 picks an identity,
    step 2 sets minutes (dial + presets). Slides up over the app with a scrim. */
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, View, Text, TextInput, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { Animated, View, Text, TextInput, Pressable, ScrollView, PanResponder, Keyboard, useWindowDimensions } from 'react-native';
 import { useStore, useTheme } from '../store/Store';
 import { Glyph, Button, Chip } from './primitives';
 import Icon from './Icon';
@@ -27,10 +27,27 @@ export default function LogSheet() {
   const [mounted, setMounted] = useState(false);
 
   const slide = useRef(new Animated.Value(0)).current; // 0 hidden, 1 shown
+  const dragY = useRef(new Animated.Value(0)).current; // finger-follow offset while swiping the handle
   const kb = useKeyboardHeight(); // lift the sheet so the note input clears the keyboard
+
+  // swipe the top handle down to dismiss; release past a threshold (or with a
+  // flick) closes, otherwise the sheet springs back into place.
+  const pan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 4 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderGrant: () => Keyboard.dismiss(),
+      onPanResponderMove: (_, g) => { if (g.dy > 0) dragY.setValue(g.dy); },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 90 || g.vy > 0.8) onClose();
+        else Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+      },
+      onPanResponderTerminate: () => Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start(),
+    })
+  ).current;
 
   useEffect(() => {
     if (open) {
+      dragY.setValue(0);
       if (preset) {
         setSel(preset);
         setStep(2);
@@ -80,12 +97,14 @@ export default function LogSheet() {
             paddingHorizontal: SPACING.sheetPad,
             paddingTop: 16,
             paddingBottom: 44,
-            transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [sheetMax + 60, 0] }) }],
+            transform: [{ translateY: Animated.add(slide.interpolate({ inputRange: [0, 1], outputRange: [sheetMax + 60, 0] }), dragY) }],
           },
           t.shadow.lg,
         ]}
       >
-        <View style={{ width: 44, height: 5, borderRadius: 999, backgroundColor: t.line, alignSelf: 'center', marginBottom: 22 }} />
+        <View {...pan.panHandlers} style={{ alignSelf: 'stretch', alignItems: 'center', paddingTop: 2, paddingBottom: 16, marginTop: -6 }}>
+          <View style={{ width: 44, height: 5, borderRadius: 999, backgroundColor: t.line }} />
+        </View>
 
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {step === 1 && (
