@@ -44,6 +44,25 @@ export function clockLabel(h) {
   return `${hr}:00 ${ap}`;
 }
 
+// like clockLabel but with minutes ("7:30 AM"); used for hand-picked session times
+export function clockLabelHM(h, m = 0) {
+  const ap = h < 12 ? 'AM' : 'PM';
+  let hr = h % 12;
+  if (hr === 0) hr = 12;
+  return `${hr}:${String(m).padStart(2, '0')} ${ap}`;
+}
+
+// which window a clock hour belongs to (so a hand-picked time keeps a window for
+// sorting + protect logic). Mirrors WINDOW_HOURS; anything unlisted is evening.
+function hourToWindow(h) {
+  if (WINDOW_HOURS.mornings.includes(h)) return 'mornings';
+  if (WINDOW_HOURS.daytime.includes(h)) return 'daytime';
+  return 'evenings';
+}
+
+// minutes-into-the-day for a session, for chronological sorting (min may be absent)
+const atMinute = (s) => s.hour * 60 + (s.min || 0);
+
 // per-day-of-week counts of this identity's past sessions (the logged rhythm)
 function dowCounts(sessions, id) {
   const c = [0, 0, 0, 0, 0, 0, 0];
@@ -197,7 +216,7 @@ export function scheduleWeek(constraints, ctx = {}) {
 
   // chronological within a day: by window first (so a personalized late-night
   // "evening" hour still sorts after the morning), then by the hour itself.
-  days.forEach((d) => d.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (a.hour - b.hour)));
+  days.forEach((d) => d.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b))));
   return days;
 }
 
@@ -218,7 +237,7 @@ export function retimeSession(plan, dayIdx, sessIdx, windowKey, constraints) {
   if (!me || me.window === windowKey) return plan; // nothing to do
   const setWindow = (s, key) => {
     const w = TIME_WINDOWS[key] || { hour: s.hour };
-    return { ...s, window: key, hour: w.hour, time: clockLabel(w.hour) };
+    return { ...s, window: key, hour: w.hour, min: 0, time: clockLabel(w.hour) };
   };
   // another session in the target window → swap it into mine, so neither stacks
   const otherIdx = day.sessions.findIndex((s, i) => i !== sessIdx && s.window === windowKey);
@@ -229,7 +248,55 @@ export function retimeSession(plan, dayIdx, sessIdx, windowKey, constraints) {
     day.sessions[otherIdx] = setWindow(day.sessions[otherIdx], me.window);
   }
   day.sessions[sessIdx] = setWindow(me, windowKey);
-  day.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (a.hour - b.hour));
+  day.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b)));
+  return next;
+}
+
+/* Set ONE session to an exact hand-picked time (hour 0–23, minute 0–59), then
+   re-sort the day so it lands in chronological place. The window is derived from
+   the hour to keep protect logic + ordering consistent; a time in a protected
+   window (calm mornings / family evenings) is refused (returns the same plan).
+   Unlike retimeSession this never swaps — multiple sessions can share a window
+   at different clock times once the user is placing them by hand. */
+export function setSessionTime(plan, dayIdx, sessIdx, hour, minute, constraints) {
+  const protect = new Set((constraints && constraints.protect) || []);
+  const windowKey = hourToWindow(hour);
+  if (windowKey === 'mornings' && protect.has('calm-mornings')) return plan;
+  if (windowKey === 'evenings' && protect.has('family-evenings')) return plan;
+  const next = plan.map((d) => ({ ...d, sessions: d.sessions.map((s) => ({ ...s })) }));
+  const day = next[dayIdx];
+  const me = day && day.sessions[sessIdx];
+  if (!me) return plan;
+  const m = Math.max(0, Math.min(59, minute || 0));
+  day.sessions[sessIdx] = { ...me, window: windowKey, hour, min: m, time: clockLabelHM(hour, m) };
+  day.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b)));
+  return next;
+}
+
+/* Apply a day + exact-time edit in ONE step (the "Enter" commit of the retiming
+   panel): move the session to `toDay` if it changed and set its hand-picked time,
+   keeping that time across the move (unlike moveSessionToDay, which re-windows).
+   Window is derived from the hour for protect + ordering; a protected window or a
+   rest destination is refused (returns the same plan). */
+export function placeSession(plan, fromDay, sessIdx, toDay, hour, minute, constraints) {
+  const protect = new Set((constraints && constraints.protect) || []);
+  const windowKey = hourToWindow(hour);
+  if (windowKey === 'mornings' && protect.has('calm-mornings')) return plan;
+  if (windowKey === 'evenings' && protect.has('family-evenings')) return plan;
+  const next = plan.map((d) => ({ ...d, sessions: d.sessions.map((s) => ({ ...s })) }));
+  const src = next[fromDay];
+  const me = src && src.sessions[sessIdx];
+  const dst = next[toDay];
+  if (!me || !dst || dst.rest) return plan;
+  const m = Math.max(0, Math.min(59, minute || 0));
+  const updated = { ...me, window: windowKey, hour, min: m, time: clockLabelHM(hour, m) };
+  if (toDay !== fromDay) {
+    src.sessions.splice(sessIdx, 1);
+    dst.sessions.push(updated);
+  } else {
+    dst.sessions[sessIdx] = updated;
+  }
+  dst.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b)));
   return next;
 }
 
@@ -260,8 +327,8 @@ export function moveSessionToDay(plan, fromDay, sessIdx, toDay, constraints) {
   if (!win) return plan;
   const w = TIME_WINDOWS[win];
   src.sessions.splice(sessIdx, 1);
-  dst.sessions.push({ ...sess, window: win, hour: w.hour, time: clockLabel(w.hour) });
-  dst.sessions.sort((a, b) => a.hour - b.hour);
+  dst.sessions.push({ ...sess, window: win, hour: w.hour, min: 0, time: clockLabel(w.hour) });
+  dst.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b)));
   return next;
 }
 

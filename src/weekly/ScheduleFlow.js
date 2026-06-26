@@ -10,7 +10,8 @@ import { Glyph, Button } from '../components/primitives';
 import Icon from '../components/Icon';
 import { useScreenPad } from '../lib/layout';
 import { fmtMins, FREE_HOURS_WEEK } from '../data/data';
-import { scheduleWeek, retimeSession, moveSessionToDay, removeSession, scheduleSummary } from '../lib/schedule';
+import { scheduleWeek, placeSession, removeSession, scheduleSummary, clockLabelHM } from '../lib/schedule';
+import TimePicker from './TimePicker';
 import { serif, sans } from '../theme/fonts';
 
 const FULLNESS = [
@@ -34,11 +35,6 @@ const PROTECT = [
   { v: 'calm-mornings', label: 'Calm mornings' },
   { v: 'no-back-to-back', label: 'No back-to-back' },
   { v: 'family-evenings', label: 'Family evenings' },
-];
-const MOVE = [
-  { v: 'mornings', label: 'Early morning' },
-  { v: 'daytime', label: 'Daytime' },
-  { v: 'evenings', label: 'Evening' },
 ];
 
 function Section({ t, label, children }) {
@@ -93,6 +89,9 @@ export default function ScheduleFlow() {
   const [plan, setPlan] = useState(null);
   const [committedConstraints, setCommittedConstraints] = useState(null);
   const [retiming, setRetiming] = useState(null); // `${dayIdx}:${sessIdx}` being retimed
+  const [pending, setPending] = useState(null); // { toDay, hour, min } staged until "Enter"
+  const openRetime = (key, dayIdx, s) => { setRetiming(key); setPending({ toDay: dayIdx, hour: s.hour, min: s.min || 0 }); };
+  const closeRetime = () => { setRetiming(null); setPending(null); };
 
   // if a schedule already exists, open straight to its result (View full week)
   useEffect(() => {
@@ -194,7 +193,7 @@ export default function ScheduleFlow() {
                       return (
                         <View key={sessIdx}>
                           <Pressable
-                            onPress={() => setRetiming(open ? null : key)}
+                            onPress={() => (open ? closeRetime() : openRetime(key, dayIdx, s))}
                             style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: t.radii.md, backgroundColor: c.soft, borderWidth: 1, borderColor: open ? c.color : 'transparent' }}
                           >
                             {idn && <Glyph char={idn.glyph} size={30} fontSize={14} color={c.color} />}
@@ -206,44 +205,45 @@ export default function ScheduleFlow() {
                           </Pressable>
                           {open && (
                             <View style={{ marginTop: 10, marginLeft: 4, gap: 10 }}>
-                              {/* move to a different day */}
+                              {/* stage a different day — applied together with the time on Enter */}
                               <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                                <Text style={{ width: 40, fontSize: 12, fontFamily: sans(700), color: t.inkFaint }}>Day</Text>
+                                <Text style={{ width: 34, fontSize: 12, fontFamily: sans(700), color: t.inkFaint }}>Day</Text>
                                 {plan.map((dd, di) => {
-                                  const cur = di === dayIdx;
+                                  const sel = pending && pending.toDay === di;
                                   const disabled = dd.rest;
                                   return (
                                     <Pressable
                                       key={di}
-                                      disabled={disabled || cur}
-                                      onPress={() => { setPlan((p) => moveSessionToDay(p, dayIdx, sessIdx, di, committedConstraints)); setRetiming(null); }}
-                                      style={{ width: 34, paddingVertical: 8, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: cur ? c.color : t.line, backgroundColor: cur ? c.soft : t.surface2, opacity: disabled ? 0.35 : 1 }}
+                                      disabled={disabled}
+                                      onPress={() => setPending((p) => ({ ...p, toDay: di }))}
+                                      style={{ width: 34, paddingVertical: 8, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: sel ? c.color : t.line, backgroundColor: sel ? c.soft : t.surface2, opacity: disabled ? 0.35 : 1 }}
                                     >
-                                      <Text style={{ fontSize: 12, fontFamily: sans(700), color: cur ? c.color : t.inkSoft }}>{dd.day.slice(0, 2)}</Text>
+                                      <Text style={{ fontSize: 12, fontFamily: sans(700), color: sel ? c.color : t.inkSoft }}>{dd.day.slice(0, 2)}</Text>
                                     </Pressable>
                                   );
                                 })}
                               </View>
-                              {/* change time of day */}
-                              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                                <Text style={{ width: 40, fontSize: 12, fontFamily: sans(700), color: t.inkFaint }}>Time</Text>
-                                {MOVE.map((m) => {
-                                  const cur = s.window === m.v; // the session's current window
-                                  return (
-                                    <Pressable
-                                      key={m.v}
-                                      disabled={cur}
-                                      onPress={() => { setPlan((p) => retimeSession(p, dayIdx, sessIdx, m.v, committedConstraints)); setRetiming(null); }}
-                                      style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: cur ? c.color : t.line, backgroundColor: cur ? c.soft : t.surface2 }}
-                                    >
-                                      <Text style={{ fontSize: 12.5, fontFamily: sans(cur ? 700 : 600), color: cur ? c.color : t.inkSoft }}>{m.label}</Text>
-                                    </Pressable>
-                                  );
-                                })}
-                              </View>
+                              {/* stage an exact time */}
+                              <TimePicker
+                                initialHour={s.hour}
+                                initialMin={s.min || 0}
+                                tint={c.color}
+                                onChange={(hour24, minute) => setPending((p) => ({ ...p, hour: hour24, min: minute }))}
+                              />
+                              {/* commit day + time together */}
+                              {pending && (
+                                <Pressable
+                                  onPress={() => { setPlan((p) => placeSession(p, dayIdx, sessIdx, pending.toDay, pending.hour, pending.min, committedConstraints)); closeRetime(); }}
+                                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 999, backgroundColor: c.color, opacity: pressed ? 0.85 : 1 })}
+                                >
+                                  <Icon name="check" size={15} stroke={2.4} color={t.bg} />
+                                  <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: t.bg }}>Enter</Text>
+                                  <Text style={{ fontSize: 13.5, fontFamily: serif(500), color: t.bg }}>{plan[pending.toDay].day.slice(0, 3)} · {clockLabelHM(pending.hour, pending.min)}</Text>
+                                </Pressable>
+                              )}
                               {/* remove from the week */}
                               <Pressable
-                                onPress={() => { setPlan((p) => removeSession(p, dayIdx, sessIdx)); setRetiming(null); }}
+                                onPress={() => { setPlan((p) => removeSession(p, dayIdx, sessIdx)); closeRetime(); }}
                                 style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: t.line, opacity: pressed ? 0.6 : 1 })}
                               >
                                 <Icon name="archive" size={14} stroke={1.8} color={t.warn} />
@@ -264,7 +264,7 @@ export default function ScheduleFlow() {
             <Icon name="check" size={18} stroke={2.4} color={t.bg} />
             <Text style={{ marginLeft: 8, color: t.bg, fontFamily: sans(600), fontSize: 17 }}>Add to my week</Text>
           </Button>
-          <Button variant="ghost" onPress={() => { setMode('form'); setRetiming(null); }} style={{ marginTop: 6 }}>
+          <Button variant="ghost" onPress={() => { setMode('form'); closeRetime(); }} style={{ marginTop: 6 }}>
             <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.inkSoft }}>Rearrange with changes</Text>
           </Button>
         </ScrollView>

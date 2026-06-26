@@ -1,4 +1,4 @@
-import { scheduleWeek, retimeSession, moveSessionToDay, removeSession, scheduleSummary, clockLabel } from './schedule';
+import { scheduleWeek, retimeSession, setSessionTime, placeSession, moveSessionToDay, removeSession, scheduleSummary, clockLabel, clockLabelHM } from './schedule';
 
 const IDS = [
   { id: 'writer', name: 'Writer', glyph: 'W', desired: 30 },
@@ -138,6 +138,66 @@ describe('retimeSession', () => {
     expect(nowEve.identityId).toBe(mornId); // mine took evening
     expect(nowMorn.identityId).toBe(eveId); // the occupant took my morning
     expect(out[di].sessions).toHaveLength(2); // nothing stacked or lost
+  });
+});
+
+describe('setSessionTime (hand-picked exact time)', () => {
+  test('sets the exact hour/minute, derives the window, and labels with minutes', () => {
+    const plan = scheduleWeek(con({ windows: ['daytime'] }), base);
+    const di = plan.findIndex((d) => d.sessions.length === 1);
+    const out = setSessionTime(plan, di, 0, 7, 30, con()); // 7:30 AM → mornings
+    expect(out[di].sessions[0].hour).toBe(7);
+    expect(out[di].sessions[0].min).toBe(30);
+    expect(out[di].sessions[0].window).toBe('mornings');
+    expect(out[di].sessions[0].time).toBe(clockLabelHM(7, 30));
+  });
+
+  test('re-sorts the day chronologically after a time change', () => {
+    // a two-session day; push the later one to an early morning time
+    const plan = scheduleWeek(con({ windows: ['mornings', 'evenings', 'weekends'], shape: 'mix' }), base);
+    const di = plan.findIndex((d) => !d.rest && d.sessions.length === 2);
+    const out = setSessionTime(plan, di, 1, 6, 15, con()); // move 2nd session to 6:15 AM
+    const times = out[di].sessions.map((s) => s.hour * 60 + (s.min || 0));
+    expect(times[0]).toBeLessThanOrEqual(times[1]); // sorted ascending by clock time
+  });
+
+  test('refuses a time inside a protected window (family evenings)', () => {
+    const plan = scheduleWeek(con({ windows: ['daytime'] }), base);
+    const di = plan.findIndex((d) => d.sessions.length >= 1);
+    const same = setSessionTime(plan, di, 0, 20, 0, con({ protect: ['family-evenings'] })); // 8 PM = evenings
+    expect(same).toBe(plan); // unchanged
+  });
+});
+
+describe('placeSession (day + exact time, committed together)', () => {
+  test('moves to a new day AND keeps the hand-picked time', () => {
+    const plan = scheduleWeek(con({ windows: ['daytime'] }), base);
+    const from = plan.findIndex((d) => !d.rest && d.sessions.length >= 1);
+    const to = plan.findIndex((d, i) => i !== from && !d.rest);
+    const id = plan[from].sessions[0].identityId;
+    const out = placeSession(plan, from, 0, to, 7, 45, con()); // 7:45 AM on another day
+    const moved = out[to].sessions.find((s) => s.identityId === id);
+    expect(moved).toBeTruthy();
+    expect(moved.hour).toBe(7);
+    expect(moved.min).toBe(45);
+    expect(moved.time).toBe(clockLabelHM(7, 45));
+    expect(out[from].sessions.find((s) => s.identityId === id)).toBeUndefined(); // left the old day
+  });
+
+  test('same-day call just sets the time in place', () => {
+    const plan = scheduleWeek(con({ windows: ['daytime'] }), base);
+    const di = plan.findIndex((d) => d.sessions.length === 1);
+    const out = placeSession(plan, di, 0, di, 9, 0, con());
+    expect(out[di].sessions[0].hour).toBe(9);
+    expect(out[di].sessions[0].min).toBe(0);
+  });
+
+  test('refuses a rest-day destination', () => {
+    const plan = scheduleWeek(con({ windows: ['daytime'], protect: ['rest-day'] }), base);
+    const from = plan.findIndex((d) => !d.rest && d.sessions.length >= 1);
+    const restDay = plan.findIndex((d) => d.rest);
+    if (restDay === -1) return; // no rest day this run → nothing to assert
+    expect(placeSession(plan, from, 0, restDay, 8, 0, con({ protect: ['rest-day'] }))).toBe(plan);
   });
 });
 
