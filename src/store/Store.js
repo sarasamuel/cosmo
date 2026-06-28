@@ -13,7 +13,7 @@ import { DATA_VERSION, migrateData } from '../lib/migrations';
 import {
   IDENTITIES, RELAX, SESSIONS, FREE_HOURS_WEEK,
   alignment as alignmentFn, assignHue, fmtWhen,
-  weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS, mergeSessions, newSessionId,
+  weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS, mergeSessions, newSessionId, WEEK_STARTS_ON,
 } from '../data/data';
 import { themes, identityColors } from '../theme/theme';
 
@@ -39,6 +39,11 @@ const KEY_SCHEDULE = 'cosmo-schedule'; // this week's arranged session plan { we
 const KEY_TOUR = 'cosmo-tour-seen'; // the feature tour played once before setup (don't replay it)
 
 const DEFAULT_REMINDER = { enabled: false, hour: 9, minute: 0 };
+// The weekly "plan your week" nudge fires the evening before the week starts, at
+// 9pm. WEEK_STARTS_ON is a JS getDay() value (0=Sun); the evening before maps to
+// expo-notifications' 1–7 weekday (1=Sun). For WEEK_STARTS_ON=0 → Saturday (7).
+const PLAN_REMINDER_WEEKDAY = ((WEEK_STARTS_ON - 1 + 7) % 7) + 1;
+const PLAN_REMINDER_HOUR = 21;
 
 // "30 minutes before each session" reminder payloads, derived from an arranged
 // plan. `weekStart` anchors day k to a real calendar date. Past times are
@@ -187,23 +192,42 @@ export function StoreProvider({ children }) {
   // notification's delivery time — a new day's tap has a new stamp and reopens,
   // a stale one doesn't. Session-reminder taps (data.kind === 'schedule') are NOT
   // the nightly review, so they don't open it.
-  const isScheduleTap = (resp) => resp?.notification?.request?.content?.data?.kind === 'schedule';
+  const tapKind = (resp) => resp?.notification?.request?.content?.data?.kind;
+  const routeTap = (kind) => {
+    if (kind === 'schedule') return; // session reminder → no navigation
+    if (kind === 'plan-week') setPlanOpen(true); // weekly nudge → open the plan sheet
+    else setReview(true); // nightly → end-of-day review
+  };
   useEffect(() => {
-    const unsub = notifications.addResponseListener((resp) => { if (!isScheduleTap(resp)) setReview(true); });
+    const unsub = notifications.addResponseListener((resp) => routeTap(tapKind(resp)));
     (async () => {
       const resp = await notifications.getInitialResponse();
-      if (!resp || isScheduleTap(resp)) return;
+      const kind = tapKind(resp);
+      if (!resp || kind === 'schedule') return;
       const stamp = String((resp.notification && resp.notification.date) || '');
       if (stamp) {
         const seen = await storage.getItem(KEY_LASTNOTIF);
         if (stamp === seen) return; // already handled this exact delivery
         storage.setItem(KEY_LASTNOTIF, stamp);
       }
-      setReview(true);
+      routeTap(kind);
     })();
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Ensure the weekly "plan your week" reminder is scheduled once reminders are
+  // on — covers users from before this nudge existed. Permission-gated so it
+  // never prompts; the WEEKLY trigger persists, so this is an idempotent
+  // re-assertion on launch (scheduleWeekly cancels-then-adds by fixed id).
+  useEffect(() => {
+    if (!hydrated || !remindersOn) return;
+    (async () => {
+      if (await notifications.hasPermission()) {
+        notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0);
+      }
+    })();
+  }, [hydrated, remindersOn]);
 
   // Track the Supabase auth session (cloud backup). No-op when Supabase isn't
   // configured — the app stays fully usable offline. Sync of the domain state is
@@ -237,7 +261,7 @@ export function StoreProvider({ children }) {
       KEY_FREEHOURS, KEY_STAMP, KEY_NAME, KEY_AUTHSEEN, KEY_ALLMET, KEY_SYNCED, KEY_SYNCEDSTAMP, KEY_TOUR]
       .forEach((k) => storage.removeItem(k));
     setTourSeen(false);
-    notifications.cancelDaily();
+    notifications.cancelAll(); // nightly + weekly plan nudge + any session reminders
     setIdentities(IDENTITIES); setRetired([]); setRelax(RELAX); setSessions(SESSIONS); setPlanHistory({});
     setThemeName('dark'); setFormState('orbit'); setFreeHoursState(FREE_HOURS_WEEK.def);
     setReminder(DEFAULT_REMINDER); setWeekPlanned(false); setAllMetWeek(0);
@@ -539,6 +563,8 @@ export function StoreProvider({ children }) {
       return;
     }
     await notifications.scheduleDaily(next.hour, next.minute);
+    // permission was just confirmed → make sure the weekly plan nudge is set too
+    notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0);
   }, [remindersOn]);
   const setReminderEnabled = useCallback((enabled) => persistReminder({ ...reminder, enabled }), [reminder, persistReminder]);
   const setReminderTime = useCallback((hour, minute) => persistReminder({ ...reminder, enabled: true, hour, minute }), [reminder, persistReminder]);
@@ -562,6 +588,7 @@ export function StoreProvider({ children }) {
     (async () => {
       const granted = await notifications.ensurePermission();
       if (!granted) return;
+      notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0); // weekly plan nudge rides the master switch
       if (reminder.enabled) notifications.scheduleDaily(reminder.hour, reminder.minute);
       if (scheduleData && Array.isArray(scheduleData.plan) && scheduleData.weekStart === weekStartMs()) {
         const ids = await notifications.scheduleSessionReminders(buildReminderItems(scheduleData.plan, scheduleData.weekStart, identities));

@@ -16,8 +16,12 @@ jest.mock('../lib/notifications', () => ({
   addResponseListener: () => () => {},
   getInitialResponse: jest.fn(async () => null),
   cancelDaily: jest.fn(),
+  cancelAll: jest.fn(),
   ensurePermission: jest.fn(async () => true),
+  hasPermission: jest.fn(async () => true),
   scheduleDaily: jest.fn(),
+  scheduleWeekly: jest.fn(),
+  cancelWeekly: jest.fn(),
 }));
 jest.mock('../lib/auth', () => ({
   isConfigured: true,

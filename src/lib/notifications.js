@@ -75,6 +75,59 @@ export async function scheduleDaily(hour, minute) {
   }
 }
 
+const WEEKLY_CHANNEL = 'weekly';
+const WEEKLY_ID = 'cosmo-weekly-plan'; // fixed id so the weekly planning nudge is cancellable on its own
+const WEEKLY_TITLE = 'A new week is almost here';
+const WEEKLY_BODY = 'Take a moment to plan how you want to spend it.';
+
+// Non-prompting check: true only if notification permission is already granted.
+// Used to (re)schedule on launch without surprising the user with a prompt.
+export async function hasPermission() {
+  try {
+    const current = await Notifications.getPermissionsAsync();
+    return !!current.granted;
+  } catch (e) {
+    warn('has-permission', e);
+    return false;
+  }
+}
+
+// (Re)schedule the single weekly "plan your week" reminder. weekday is 1–7 with
+// 1 = Sunday (expo-notifications convention). Like the nightly one, the WEEKLY
+// trigger repeats on its own once scheduled; we cancel-then-add so it can move
+// without stacking duplicates. Tapping it carries data.kind = 'plan-week' so the
+// app opens the plan sheet instead of the end-of-day review.
+export async function scheduleWeekly(weekday, hour, minute) {
+  try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync(WEEKLY_CHANNEL, {
+        name: 'Weekly planning reminders',
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+    }
+    try { await Notifications.cancelScheduledNotificationAsync(WEEKLY_ID); } catch (e) { /* none yet */ }
+    await Notifications.scheduleNotificationAsync({
+      identifier: WEEKLY_ID,
+      content: { title: WEEKLY_TITLE, body: WEEKLY_BODY, data: { kind: 'plan-week' } },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday, hour, minute, channelId: WEEKLY_CHANNEL },
+    });
+    return true;
+  } catch (e) {
+    warn('schedule-weekly', e);
+    return false;
+  }
+}
+
+export async function cancelWeekly() {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(WEEKLY_ID); // only the weekly nudge
+    return true;
+  } catch (e) {
+    warn('cancel-weekly', e);
+    return false;
+  }
+}
+
 const SESSION_CHANNEL = 'sessions';
 
 // Schedule a one-shot local notification at each item's Date (used for the
