@@ -25,6 +25,7 @@ export default function LogSheet() {
   const [note, setNote] = useState(''); // optional session note → becomes a journal entry
   const [milestone, setMilestone] = useState(false); // mark the note as a milestone
   const [mounted, setMounted] = useState(false);
+  const [dialActive, setDialActive] = useState(false); // freeze scroll while dragging the minute dial
 
   const slide = useRef(new Animated.Value(0)).current; // 0 hidden, 1 shown
   const dragY = useRef(new Animated.Value(0)).current; // finger-follow offset while swiping the handle
@@ -106,7 +107,7 @@ export default function LogSheet() {
           <View style={{ width: 44, height: 5, borderRadius: 999, backgroundColor: t.line }} />
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" scrollEnabled={!dialActive}>
           {step === 1 && (
             <View>
               <Text style={{ fontFamily: serif(500), fontSize: 27, color: t.ink, marginBottom: 4 }}>What did you tend to?</Text>
@@ -182,7 +183,7 @@ export default function LogSheet() {
                 </View>
               </View>
 
-              <MinuteDial value={mins} max={180} onChange={setMins} color={colorsFor(sel).color} />
+              <MinuteDial value={mins} max={180} onChange={setMins} color={colorsFor(sel).color} onActiveChange={setDialActive} />
 
               <View style={{ flexDirection: 'row', gap: 9, justifyContent: 'center', flexWrap: 'wrap', marginTop: 20, marginBottom: 26 }}>
                 {PRESETS.map((p) => {

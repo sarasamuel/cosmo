@@ -12,7 +12,7 @@ const START = -220;
 const SWEEP = 260;
 const MAX_SIZE = 240;
 
-export default function MinuteDial({ value, max = 180, onChange, color }) {
+export default function MinuteDial({ value, max = 180, onChange, color, onActiveChange }) {
   const { t } = useTheme();
   const [boxW, setBoxW] = useState(0);
 
@@ -37,6 +37,8 @@ export default function MinuteDial({ value, max = 180, onChange, color }) {
   // pan handlers are created once; route through a ref so they always read the
   // current geometry/onChange (both depend on the measured size).
   const fnRef = useRef(null);
+  const activeRef = useRef(null);
+  activeRef.current = onActiveChange || (() => {});
   fnRef.current = (x, y) => {
     const px = x - cx;
     const py = y - cy;
@@ -53,10 +55,17 @@ export default function MinuteDial({ value, max = 180, onChange, color }) {
 
   const pan = useRef(
     PanResponder.create({
+      // capture the gesture before the enclosing ScrollView (so a rotating drag
+      // turns the dial instead of scrolling the sheet) and never yield it mid-drag.
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e) => fnRef.current(e.nativeEvent.locationX, e.nativeEvent.locationY),
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => { activeRef.current(true); fnRef.current(e.nativeEvent.locationX, e.nativeEvent.locationY); },
       onPanResponderMove: (e) => fnRef.current(e.nativeEvent.locationX, e.nativeEvent.locationY),
+      onPanResponderRelease: () => activeRef.current(false),
+      onPanResponderTerminate: () => activeRef.current(false),
     })
   ).current;
 
