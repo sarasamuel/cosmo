@@ -10,7 +10,7 @@ import { Glyph, Button } from '../components/primitives';
 import Icon from '../components/Icon';
 import { useScreenPad } from '../lib/layout';
 import { fmtMins, weekStartMs } from '../data/data';
-import { blankWeek, makeSession, sortDay } from '../lib/schedule';
+import { blankWeek, makeSession, sortDay, placeSession, clockLabelHM } from '../lib/schedule';
 import TimePicker from './TimePicker';
 import { serif, sans } from '../theme/fonts';
 
@@ -24,6 +24,10 @@ export default function ManualBuilder({ onBack }) {
 
   const [week, setWeek] = useState(() => blankWeek(weekStartMs()));
   const [sheet, setSheet] = useState(null); // { dayIdx, id, time, mins }
+  const [editing, setEditing] = useState(null); // `${dayIdx}:${sessIdx}` being edited
+  const [pending, setPending] = useState(null); // { toDay, hour, min } staged until "Enter"
+  const openEdit = (key, di, s) => { setEditing(key); setPending({ toDay: di, hour: s.hour, min: s.min || 0 }); };
+  const closeEdit = () => { setEditing(null); setPending(null); };
 
   const allSessions = week.flatMap((d) => (d.rest ? [] : d.sessions));
   const total = allSessions.reduce((s, x) => s + x.mins, 0);
@@ -75,16 +79,52 @@ export default function ManualBuilder({ onBack }) {
               <View style={{ gap: 8 }}>
                 {d.sessions.map((s, si) => {
                   const idn = byId[s.identityId]; const c = idn ? colorsFor(idn) : { color: t.ink, soft: t.surface2 };
+                  const key = `${di}:${si}`; const open = editing === key;
                   return (
-                    <View key={si} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: t.radii.md, backgroundColor: c.soft }}>
-                      {idn && <Glyph char={idn.glyph} size={30} fontSize={14} color={c.color} />}
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text numberOfLines={1} style={{ fontSize: 14.5, fontFamily: sans(700), color: t.ink }}>{idn ? idn.name : 'Session'}</Text>
-                        <Text style={{ fontSize: 12, fontFamily: sans(600), color: t.inkSoft }}>{s.time} · {fmtMins(s.mins)}</Text>
-                      </View>
-                      <Pressable onPress={() => removeSess(di, si)} hitSlop={8} style={({ pressed }) => ({ width: 30, height: 30, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}>
-                        <Icon name="archive" size={15} stroke={1.8} color={t.inkFaint} />
+                    <View key={si}>
+                      <Pressable
+                        onPress={() => (open ? closeEdit() : openEdit(key, di, s))}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: t.radii.md, backgroundColor: c.soft, borderWidth: 1, borderColor: open ? c.color : 'transparent' }}
+                      >
+                        {idn && <Glyph char={idn.glyph} size={30} fontSize={14} color={c.color} />}
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} style={{ fontSize: 14.5, fontFamily: sans(700), color: t.ink }}>{idn ? idn.name : 'Session'}</Text>
+                          <Text style={{ fontSize: 12, fontFamily: sans(600), color: t.inkSoft }}>{s.time} · {fmtMins(s.mins)}</Text>
+                        </View>
+                        <Icon name="clock" size={15} stroke={2} color={c.color} />
                       </Pressable>
+                      {open && pending && (
+                        <View style={{ marginTop: 10, marginLeft: 4, gap: 10 }}>
+                          {/* move to a different day */}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                            <Text style={{ width: 34, fontSize: 12, fontFamily: sans(700), color: t.inkFaint }}>Day</Text>
+                            {week.map((dd, dj) => {
+                              const sel = pending.toDay === dj;
+                              return (
+                                <Pressable key={dj} disabled={dd.rest} onPress={() => setPending((p) => ({ ...p, toDay: dj }))} style={{ width: 34, paddingVertical: 8, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: sel ? c.color : t.line, backgroundColor: sel ? c.soft : t.surface2, opacity: dd.rest ? 0.35 : 1 }}>
+                                  <Text style={{ fontSize: 12, fontFamily: sans(700), color: sel ? c.color : t.inkSoft }}>{dd.day.slice(0, 2)}</Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                          {/* pick an exact time */}
+                          <TimePicker initialHour={s.hour} initialMin={s.min || 0} tint={c.color} onChange={(h, m) => setPending((p) => ({ ...p, hour: h, min: m }))} />
+                          {/* commit day + time together */}
+                          <Pressable
+                            onPress={() => { setWeek((w) => placeSession(w, di, si, pending.toDay, pending.hour, pending.min, {})); closeEdit(); }}
+                            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 999, backgroundColor: c.color, opacity: pressed ? 0.85 : 1 })}
+                          >
+                            <Icon name="check" size={15} stroke={2.4} color={t.bg} />
+                            <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: t.bg }}>Enter</Text>
+                            <Text style={{ fontSize: 13.5, fontFamily: serif(500), color: t.bg }}>{week[pending.toDay].day.slice(0, 3)} · {clockLabelHM(pending.hour, pending.min)}</Text>
+                          </Pressable>
+                          {/* remove from the week */}
+                          <Pressable onPress={() => { removeSess(di, si); closeEdit(); }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: t.line, opacity: pressed ? 0.6 : 1 })}>
+                            <Icon name="archive" size={14} stroke={1.8} color={t.warn} />
+                            <Text style={{ fontSize: 12.5, fontFamily: sans(700), color: t.warn }}>Remove from week</Text>
+                          </Pressable>
+                        </View>
+                      )}
                     </View>
                   );
                 })}
