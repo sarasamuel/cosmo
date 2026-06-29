@@ -12,6 +12,7 @@ import { useScreenPad } from '../lib/layout';
 import { fmtMins, FREE_HOURS_WEEK } from '../data/data';
 import { scheduleWeek, placeSession, removeSession, scheduleSummary, clockLabelHM } from '../lib/schedule';
 import TimePicker from './TimePicker';
+import ManualBuilder from './ManualBuilder';
 import { serif, sans } from '../theme/fonts';
 
 const FULLNESS = [
@@ -69,7 +70,7 @@ function ChipRow({ items, value, onToggle, t, multi, colorOf }) {
 
 export default function ScheduleFlow() {
   const { t, colorsFor } = useTheme();
-  const { identities, sessions, freeHours, schedule, closeSchedule, commitSchedule } = useStore();
+  const { identities, sessions, freeHours, schedule, closeSchedule, commitSchedule, setIdentityPrefTimes } = useStore();
   const pad = useScreenPad();
 
   const planned = useMemo(() => identities.filter((i) => i.desired > 0), [identities]);
@@ -83,9 +84,16 @@ export default function ScheduleFlow() {
   const [windows, setWindows] = useState(['mornings', 'evenings', 'weekends']);
   const [shape, setShape] = useState('mix');
   const [protect, setProtect] = useState(['rest-day']);
+  // preferred clock times (minutes from midnight), seeded from each identity's
+  // saved prefTime — a soft nudge the arrange step honors. {} = all "any time".
+  const [prefs, setPrefs] = useState(() => {
+    const m = {}; identities.forEach((i) => { if (typeof i.prefTime === 'number') m[i.id] = i.prefTime; });
+    return m;
+  });
+  const setPref = (id, mins) => setPrefs((p) => { const n = { ...p }; if (mins == null) delete n[id]; else n[id] = mins; return n; });
 
-  // 'form' | 'loading' | 'result'
-  const [mode, setMode] = useState('form');
+  // 'fork' | 'manual' | 'form' | 'pref' | 'loading' | 'result'
+  const [mode, setMode] = useState('fork');
   const [plan, setPlan] = useState(null);
   const [committedConstraints, setCommittedConstraints] = useState(null);
   const [retiming, setRetiming] = useState(null); // `${dayIdx}:${sessIdx}` being retimed
@@ -107,6 +115,10 @@ export default function ScheduleFlow() {
 
   const spin = useRef(new Animated.Value(0)).current;
   const arrange = () => {
+    // limit prefs to the picked identities, then persist them on the identities so
+    // they pre-fill next week, and feed them in as this arrangement's soft nudge.
+    const livePrefs = {}; picked.forEach((id) => { if (typeof prefs[id] === 'number') livePrefs[id] = prefs[id]; });
+    setIdentityPrefTimes(Object.fromEntries(picked.map((id) => [id, livePrefs[id] ?? null])));
     const con = constraints();
     setCommittedConstraints(con);
     setMode('loading');
@@ -114,12 +126,125 @@ export default function ScheduleFlow() {
     Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1100, easing: Easing.linear, useNativeDriver: true })).start();
     // a brief, scheduling-framed beat, then lay out the week deterministically
     setTimeout(() => {
-      setPlan(scheduleWeek(con, { identities, sessions, freeHours: hours }));
+      setPlan(scheduleWeek(con, { identities, sessions, freeHours: hours, prefs: livePrefs }));
       setMode('result');
     }, 1100);
   };
 
+  // the identities the preferred-times step lists — only the ones being scheduled
+  const pickedIdentities = useMemo(() => picked.map((id) => byId[id]).filter(Boolean), [picked, byId]);
+  const prefClock = (mins) => {
+    const h24 = Math.floor(mins / 60); const m = mins % 60; const ap = h24 >= 12 ? 'PM' : 'AM';
+    let h = h24 % 12; if (h === 0) h = 12; return `${h}:${String(m).padStart(2, '0')} ${ap}`;
+  };
+
   const toggle = (arr, set) => (v) => set((cur) => (cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]));
+
+  // small shared back button for the fork-flow headers
+  const BackButton = ({ onPress }) => (
+    <Pressable onPress={onPress} hitSlop={10} style={({ pressed }) => ({ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2, borderWidth: 1, borderColor: t.line, opacity: pressed ? 0.6 : 1 })}>
+      <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron" size={20} stroke={2.2} color={t.inkSoft} /></View>
+    </Pressable>
+  );
+
+  // ---------- MANUAL BUILDER (the "build it myself" fork) ----------
+  if (mode === 'manual') return <ManualBuilder onBack={() => setMode('fork')} />;
+
+  // ---------- FORK (entry: arrange vs build) ----------
+  if (mode === 'fork') {
+    const Card = ({ icon, gold, title, sub, onPress }) => (
+      <Pressable onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: t.radii.md, borderWidth: 1, borderColor: t.line, backgroundColor: t.surface, opacity: pressed ? 0.7 : 1 })}>
+        <View style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: gold ? '#f6bf5c' : t.surface2 }}>
+          <Icon name={icon} size={22} stroke={2} color={gold ? '#1c1708' : t.inkSoft} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 16.5, fontFamily: sans(700), color: t.ink, marginBottom: 3 }}>{title}</Text>
+          <Text style={{ fontSize: 13.5, fontFamily: sans(500), color: t.inkSoft, lineHeight: 19 }}>{sub}</Text>
+        </View>
+        <Icon name="chevron" size={20} stroke={2} color={t.inkFaint} />
+      </Pressable>
+    );
+    return (
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad, paddingTop: 6, paddingBottom: 10 }}>
+          <BackButton onPress={closeSchedule} />
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 17, fontFamily: sans(700), color: t.ink, marginRight: 42 }}>Plan your week</Text>
+        </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 10, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+          <Text style={{ fontFamily: serif(500), fontSize: 30, lineHeight: 36, color: t.ink, marginBottom: 10 }}>
+            How do you want to <Text style={{ fontFamily: serif(500, true) }}>plan this week?</Text>
+          </Text>
+          <Text style={{ fontSize: 15.5, lineHeight: 23, color: t.inkSoft, marginBottom: 24 }}>
+            Let Cosmo lay out a balanced week from a few answers — or start from a blank week and place every session yourself.
+          </Text>
+          <View style={{ gap: 12 }}>
+            <Card icon="sparkle" gold title="Let Cosmo arrange it" sub="A few questions — including the times you love — and Cosmo lays out a week you can edit." onPress={() => setMode('form')} />
+            <Card icon="plus" title="Build it myself" sub="Start from a blank week and add each session by hand — full control, no auto-arrange." onPress={() => setMode('manual')} />
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ---------- PREFERRED TIMES (soft nudge, after the questions) ----------
+  if (mode === 'pref') {
+    return (
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad, paddingTop: 6, paddingBottom: 10 }}>
+          <BackButton onPress={() => setMode('form')} />
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 17, fontFamily: sans(700), color: t.ink, marginRight: 42 }}>Preferred times</Text>
+        </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 4, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+          <Text style={{ fontFamily: serif(500), fontSize: 28, color: t.ink, marginBottom: 8 }}>When do these <Text style={{ fontFamily: serif(500, true) }}>feel right?</Text></Text>
+          <Text style={{ fontSize: 15.5, lineHeight: 23, color: t.inkSoft, marginBottom: 20 }}>
+            Pin a time you love for any identity and Cosmo will aim for it. Leave the rest open.
+          </Text>
+          <View style={{ gap: 12 }}>
+            {pickedIdentities.map((idn) => {
+              const c = colorsFor(idn); const val = prefs[idn.id];
+              return (
+                <View key={idn.id} style={{ borderRadius: t.radii.md, borderWidth: 1, borderColor: t.line, backgroundColor: t.surface, padding: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: c.color }} />
+                    <Text style={{ flex: 1, fontSize: 16, fontFamily: sans(600), color: t.ink }}>{idn.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: val != null ? c.soft : t.surface2 }}>
+                      {val != null && <Icon name="clock" size={13} stroke={2.2} color={c.color} />}
+                      <Text style={{ fontSize: 13, fontFamily: sans(700), color: val != null ? c.color : t.inkFaint }}>{val != null ? prefClock(val) : 'Any time'}</Text>
+                    </View>
+                  </View>
+                  {val != null ? (
+                    <>
+                      <TimePicker initialHour={Math.floor(val / 60)} initialMin={val % 60} tint={c.color} onChange={(h, m) => setPref(idn.id, h * 60 + m)} />
+                      <Pressable onPress={() => setPref(idn.id, null)} hitSlop={6} style={({ pressed }) => ({ alignSelf: 'flex-start', marginTop: 10, opacity: pressed ? 0.6 : 1 })}>
+                        <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: t.inkFaint }}>Clear — any time is fine</Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    <Pressable onPress={() => setPref(idn.id, 720)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', paddingHorizontal: 13, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: t.line, opacity: pressed ? 0.6 : 1 })}>
+                      <Icon name="clock" size={14} stroke={2.2} color={t.inkSoft} />
+                      <Text style={{ fontSize: 13, fontFamily: sans(700), color: t.inkSoft }}>Pin a time</Text>
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, alignItems: 'flex-start', padding: 14, borderRadius: t.radii.sm, backgroundColor: t.surface2 }}>
+            <Icon name="sparkle" size={16} color={t.inkSoft} />
+            <Text style={{ flex: 1, fontSize: 13, lineHeight: 19, color: t.inkSoft }}>
+              <Text style={{ fontFamily: sans(700), color: t.ink }}>Soft by design.</Text> Cosmo aims for your times and only shifts a session when the week is too full to honor it — never silently.
+            </Text>
+          </View>
+        </ScrollView>
+        <View style={{ paddingHorizontal: pad, paddingTop: 12, paddingBottom: 24 }}>
+          <Button onPress={arrange}>
+            <Icon name="calendar" size={18} color={t.bg} />
+            <Text style={{ marginLeft: 8, color: t.bg, fontFamily: sans(600), fontSize: 17 }}>Arrange my week</Text>
+          </Button>
+        </View>
+      </View>
+    );
+  }
 
   // ---------- LOADING ----------
   if (mode === 'loading') {
@@ -153,6 +278,10 @@ export default function ScheduleFlow() {
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: pad, paddingTop: 4, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
           <Text style={{ fontFamily: serif(400, true), fontSize: 18, lineHeight: 26, color: t.inkSoft }}>
             Cosmo arranged <Text style={{ fontFamily: serif(500), color: t.ink }}>{sum.sessionCount} sessions · ~{Math.round(sum.totalMins / 60)}h</Text> this week{restNote}.
+            {(() => {
+              const pinnedNames = [...new Set(plan.flatMap((d) => d.sessions).filter((s) => s.pinned).map((s) => byId[s.identityId]?.name).filter(Boolean))];
+              return pinnedNames.length ? <Text> {pinnedNames.join(' & ')} sits right where you asked.</Text> : null;
+            })()}
           </Text>
 
           {/* per-identity balance chips */}
@@ -198,7 +327,15 @@ export default function ScheduleFlow() {
                           >
                             {idn && <Glyph char={idn.glyph} size={30} fontSize={14} color={c.color} />}
                             <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text numberOfLines={1} style={{ fontSize: 14.5, fontFamily: sans(700), color: t.ink }}>{s.label}</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text numberOfLines={1} style={{ fontSize: 14.5, fontFamily: sans(700), color: t.ink }}>{s.label}</Text>
+                                {s.pinned && (
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: c.soft, borderWidth: 1, borderColor: c.color }}>
+                                    <Icon name="clock" size={10} stroke={2.4} color={c.color} />
+                                    <Text style={{ fontSize: 10.5, fontFamily: sans(700), color: c.color }}>your time</Text>
+                                  </View>
+                                )}
+                              </View>
                               <Text style={{ fontSize: 12, fontFamily: sans(600), color: t.inkSoft }}>{s.time} · {fmtMins(s.mins)}</Text>
                             </View>
                             <Icon name="clock" size={15} stroke={2} color={c.color} />
@@ -264,8 +401,8 @@ export default function ScheduleFlow() {
             <Icon name="check" size={18} stroke={2.4} color={t.bg} />
             <Text style={{ marginLeft: 8, color: t.bg, fontFamily: sans(600), fontSize: 17 }}>Add to my week</Text>
           </Button>
-          <Button variant="ghost" onPress={() => { setMode('form'); closeRetime(); }} style={{ marginTop: 6 }}>
-            <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.inkSoft }}>Rearrange with changes</Text>
+          <Button variant="ghost" onPress={() => { setMode('fork'); closeRetime(); }} style={{ marginTop: 6 }}>
+            <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.inkSoft }}>Plan a different way</Text>
           </Button>
         </ScrollView>
       </View>
@@ -276,9 +413,7 @@ export default function ScheduleFlow() {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad, paddingTop: 6, paddingBottom: 10 }}>
-        <Pressable onPress={closeSchedule} hitSlop={10} style={({ pressed }) => ({ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2, borderWidth: 1, borderColor: t.line, opacity: pressed ? 0.6 : 1 })}>
-          <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron" size={20} stroke={2.2} color={t.inkSoft} /></View>
-        </Pressable>
+        <BackButton onPress={() => setMode('fork')} />
         <Text style={{ flex: 1, textAlign: 'center', fontSize: 17, fontFamily: sans(700), color: t.ink, marginRight: 42 }}>Arrange your week</Text>
       </View>
 
@@ -327,9 +462,9 @@ export default function ScheduleFlow() {
           <ChipRow multi t={t} items={PROTECT} value={protect} onToggle={toggle(protect, setProtect)} />
         </Section>
 
-        <Button onPress={arrange} disabled={!valid} style={{ marginTop: 28 }}>
-          <Icon name="calendar" size={18} color={t.bg} />
-          <Text style={{ marginLeft: 8, color: t.bg, fontFamily: sans(600), fontSize: 17 }}>Arrange my week</Text>
+        <Button onPress={() => setMode('pref')} disabled={!valid} style={{ marginTop: 28 }}>
+          <Icon name="arrow" size={18} color={t.bg} />
+          <Text style={{ marginLeft: 8, color: t.bg, fontFamily: sans(600), fontSize: 17 }}>Next: preferred times</Text>
         </Button>
         {!valid && (
           <Text style={{ fontSize: 13, color: t.inkFaint, fontFamily: sans(500), textAlign: 'center', marginTop: 10 }}>

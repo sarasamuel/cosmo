@@ -113,6 +113,9 @@ export function scheduleWeek(constraints, ctx = {}) {
   const sessions = ctx.sessions || [];
   const weekStart = ctx.weekStart || weekStartMs(ctx.now);
   const now = ctx.now || Date.now();
+  // per-identity preferred clock time (minutes from midnight). A SOFT nudge:
+  // it biases which window a session lands in, never overrides a protect rule.
+  const prefs = ctx.prefs || {};
 
   // 1. which identities (default: those chosen, else all with an intention)
   const chosenIds = (c.identities && c.identities.length) ? c.identities : all.filter((i) => i.desired > 0).map((i) => i.id);
@@ -148,7 +151,11 @@ export function scheduleWeek(constraints, ctx = {}) {
     // are reflective lines, not activity names — they'd read oddly as titles).
     const dow = dowCounts(sessions, idn.id); // NB: idn.id (the count keys on session.id)
     const dowTotal = dow.reduce((a, b) => a + b, 0);
-    return { idn, size, count, label: idn.name, dow, dowTotal, tp: timeProfile(hourCounts(sessions, idn.id)) };
+    // preferred time → (hour, minute, window) for the soft nudge below
+    const prefMin = typeof prefs[idn.id] === 'number' ? prefs[idn.id] : null;
+    const prefHour = prefMin != null ? Math.floor(prefMin / 60) : null;
+    const prefWin = prefMin != null ? hourToWindow(prefHour) : null;
+    return { idn, size, count, label: idn.name, dow, dowTotal, tp: timeProfile(hourCounts(sessions, idn.id)), prefMin, prefHour, prefWin };
   });
   const toPlace = [];
   let remaining = queues.reduce((s, q) => s + q.count, 0);
@@ -187,31 +194,46 @@ export function scheduleWeek(constraints, ctx = {}) {
   const W_DOW = 10; // weight on the day-of-week habit (share of its sessions on this weekday)
   const W_WIN = 8; //  weight on the time-of-day habit (share of its sessions in this window)
   const W_SPREAD = 6; // penalty per session already on a day, to spread the week out
+  const W_PREF = 100; // a preferred time outweighs habit — but only across OPEN slots, so a
+  //                     taken slot or a protected window (never in timeKeys) still wins.
   const taken = new Set(); // `${dayIdx}|${windowKey}`
   const perDayCount = days.map(() => 0);
+  // a protected window can never host a session (binds even a preferred time)
+  const winProtected = (win) => (win === 'mornings' && protect.has('calm-mornings')) || (win === 'evenings' && protect.has('family-evenings'));
   toPlace.forEach((q) => {
     let best = null; let bestScore = -Infinity;
+    // A pinned time makes its window eligible for THIS identity even if the user
+    // didn't choose it as an open window — preferences bias, only protect binds.
+    const qWins = q.prefWin && !timeKeys.includes(q.prefWin) && !winProtected(q.prefWin) ? [...timeKeys, q.prefWin] : timeKeys;
     // normalized to shares (0..1) so day and time signals are comparable; both are
     // 0 with no history, so a cold start falls back to pure spread + earliest slot.
     const dowShare = (di) => (q.dowTotal ? q.dow[days[di].dowIndex] / q.dowTotal : 0);
     eligibleDays.forEach(({ idx }) => {
-      timeKeys.forEach((wk, wi) => {
+      qWins.forEach((wk, wi) => {
         const slot = `${idx}|${wk}`;
         if (taken.has(slot)) return;
         // prefer the identity's historical weekday AND its usual time of day, then
         // emptier days, then earlier in the week / earlier window — all deterministic.
+        // A preferred time adds a strong bias toward its window (only reachable when
+        // that window is allowed, since timeKeys already excludes protected ones).
         const winShare = q.tp.share[wk] || 0;
-        const score = dowShare(idx) * W_DOW + winShare * W_WIN - perDayCount[idx] * W_SPREAD - idx * 0.5 - wi * 0.3;
+        const prefBonus = q.prefWin && wk === q.prefWin ? W_PREF : 0;
+        const score = dowShare(idx) * W_DOW + winShare * W_WIN + prefBonus - perDayCount[idx] * W_SPREAD - idx * 0.5 - wi * 0.3;
         if (score > bestScore) { bestScore = score; best = { idx, wk }; }
       });
     });
     if (!best) return; // out of slots → drop (we log this cap to the caller via summary)
     taken.add(`${best.idx}|${best.wk}`);
     perDayCount[best.idx] += 1;
-    // use the identity's personalized hour for this window (its modal logged hour),
-    // falling back to the window's canonical time when there's no history.
-    const hour = q.tp.hour[best.wk];
-    days[best.idx].sessions.push({ identityId: q.idn.id, label: q.label, window: best.wk, hour, time: clockLabel(hour), mins: q.size });
+    // honored = the session actually landed in its preferred window → sit it at the
+    // exact preferred time and tag it pinned. Otherwise (pref window full/protected)
+    // fall back to the identity's personalized hour — placed, not dropped, not pinned.
+    const honored = q.prefMin != null && best.wk === q.prefWin;
+    const hour = honored ? q.prefHour : q.tp.hour[best.wk];
+    const min = honored ? q.prefMin % 60 : 0;
+    const sess = { identityId: q.idn.id, label: q.label, window: best.wk, hour, min, time: honored ? clockLabelHM(hour, min) : clockLabel(hour), mins: q.size };
+    if (honored) sess.pinned = true;
+    days[best.idx].sessions.push(sess);
   });
 
   // chronological within a day: by window first (so a personalized late-night
@@ -245,6 +267,36 @@ export function placeSession(plan, fromDay, sessIdx, toDay, hour, minute, constr
   }
   dst.sessions.sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b)));
   return next;
+}
+
+/* A blank, well-formed 7-day week (same shape scheduleWeek returns) — the
+   starting point for the manual "build it myself" builder. */
+export function blankWeek(weekStart) {
+  const ws = weekStart || weekStartMs();
+  return Array.from({ length: 7 }, (_, k) => {
+    const d = new Date(ws + k * DAY_MS);
+    return {
+      day: DOW[d.getDay()],
+      dowIndex: d.getDay(),
+      date: `${MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}`,
+      rest: false,
+      sessions: [],
+    };
+  });
+}
+
+/* Build one session in the canonical shape from an identity, a clock time
+   (minutes from midnight) and a length — for the manual builder, so window/label/
+   time formatting stays in one place. */
+export function makeSession(identity, minutesOfDay, mins) {
+  const hour = Math.floor(minutesOfDay / 60);
+  const min = minutesOfDay % 60;
+  return { identityId: identity.id, label: identity.name, window: hourToWindow(hour), hour, min, time: clockLabelHM(hour, min), mins };
+}
+
+/* Chronological day sort shared by builders/editors (window first, then clock). */
+export function sortDay(sessions) {
+  return [...sessions].sort((a, b) => (WIN_RANK[a.window] - WIN_RANK[b.window]) || (atMinute(a) - atMinute(b)));
 }
 
 /* Drop a session from the week entirely. Returns a new plan. */

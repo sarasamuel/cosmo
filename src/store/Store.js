@@ -832,6 +832,19 @@ export function StoreProvider({ children }) {
     setEditing(null);
   }, []);
 
+  // Persist per-identity preferred session times (minutes from midnight) so they
+  // pre-fill and bias every week's arrange. prefsMap maps id → minutes, or id →
+  // null/undefined to clear. Only listed ids change. Persisted via the identities
+  // autosave (prefTime rides on the identity object).
+  const setIdentityPrefTimes = useCallback((prefsMap) => {
+    setIdentities((prev) => prev.map((i) => {
+      if (!prefsMap || !(i.id in prefsMap)) return i;
+      const v = prefsMap[i.id];
+      if (typeof v !== 'number') { const { prefTime, ...rest } = i; return rest; } // clear
+      return { ...i, prefTime: Math.max(0, Math.min(1439, Math.round(v))) };
+    }));
+  }, []);
+
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
@@ -988,6 +1001,7 @@ export function StoreProvider({ children }) {
       openEditIdentity,
       closeEditIdentity,
       editIdentity,
+      setIdentityPrefTimes,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -1045,7 +1059,7 @@ export function StoreProvider({ children }) {
       liveRelax, sessions, planHistory, journal, joinedAt, addJournalEntry, removeJournalEntry, align, week, logTargets, logOpen, logPreset, openLog, closeLog,
       commitLog, planOpen, openPlan, closePlan, commitWeekPlan, weekPlanned, tourSeen, markTourSeen,
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
-      focusCosmos, clearCosmos, detail, openDetail, closeDetail, editing, openEditIdentity, closeEditIdentity, editIdentity, settingsOpen, openSettings, closeSettings, methodOpen, openMethod, closeMethod,
+      focusCosmos, clearCosmos, detail, openDetail, closeDetail, editing, openEditIdentity, closeEditIdentity, editIdentity, setIdentityPrefTimes, settingsOpen, openSettings, closeSettings, methodOpen, openMethod, closeMethod,
       scheduleOpen, openSchedule, closeSchedule, schedule, commitSchedule, clearSchedule, review, openReview, closeReview, commitReview,
       celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn, freeHours, setFreeHours, setRelaxAllowance,
       session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, exportData, deleteAccount, userName, setUserName, authSeen, markAuthSeen,

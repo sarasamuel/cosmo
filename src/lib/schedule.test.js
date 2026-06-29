@@ -31,6 +31,46 @@ describe('scheduleWeek — shape & determinism', () => {
   });
 });
 
+describe('scheduleWeek — preferred times (soft nudge)', () => {
+  test('places an identity at its preferred time and tags it pinned', () => {
+    const plan = scheduleWeek(con(), { ...base, prefs: { writer: 720 } }); // noon → daytime
+    const writerSessions = plan.flatMap((d) => d.sessions).filter((s) => s.identityId === 'writer');
+    const pinned = writerSessions.filter((s) => s.pinned);
+    expect(pinned.length).toBeGreaterThan(0);
+    pinned.forEach((s) => {
+      expect(s.window).toBe('daytime');
+      expect(s.hour).toBe(12);
+      expect(s.min).toBe(0);
+      expect(s.time).toBe(clockLabelHM(12, 0));
+    });
+  });
+
+  test('honors a preferred time even when its window was not a selected open window', () => {
+    // user picked only mornings + evenings, but pinned Writer at noon (daytime)
+    const plan = scheduleWeek(con({ windows: ['mornings', 'evenings'] }), { ...base, prefs: { writer: 720 } });
+    const pinned = plan.flatMap((d) => d.sessions).filter((s) => s.identityId === 'writer' && s.pinned);
+    expect(pinned.length).toBeGreaterThan(0);
+    pinned.forEach((s) => { expect(s.window).toBe('daytime'); expect(s.hour).toBe(12); });
+  });
+
+  test('a preferred time in a protected window is moved (not dropped, not pinned)', () => {
+    // Writer prefers 7am (mornings), but calm-mornings protects that window.
+    const before = scheduleSummary(scheduleWeek(con({ protect: ['calm-mornings'] }), base)).sessionCount;
+    const plan = scheduleWeek(con({ protect: ['calm-mornings'] }), { ...base, prefs: { writer: 420 } });
+    const all = plan.flatMap((d) => d.sessions);
+    expect(all.some((s) => s.window === 'mornings')).toBe(false); // protect binds
+    expect(all.some((s) => s.identityId === 'writer' && s.pinned)).toBe(false); // never falsely pinned
+    expect(scheduleSummary(plan).sessionCount).toBe(before); // moved, not dropped
+  });
+
+  test('no prefs → unchanged whole-hour placement (no pinned, no min)', () => {
+    const plan = scheduleWeek(con(), base);
+    const all = plan.flatMap((d) => d.sessions);
+    expect(all.some((s) => s.pinned)).toBe(false);
+    all.forEach((s) => expect(s.min || 0).toBe(0));
+  });
+});
+
 describe('scheduleWeek — learns the logged rhythm (weekday + time of day)', () => {
   // a session for `id` on a given weekday (0=Sun) at a given clock hour
   const sess = (id, dow, hour, n = 0) => {
