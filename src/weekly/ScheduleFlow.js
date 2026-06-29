@@ -10,9 +10,10 @@ import { Glyph, Button } from '../components/primitives';
 import Icon from '../components/Icon';
 import { useScreenPad } from '../lib/layout';
 import { fmtMins, FREE_HOURS_WEEK } from '../data/data';
-import { scheduleWeek, placeSession, removeSession, scheduleSummary, clockLabelHM } from '../lib/schedule';
+import { scheduleWeek, placeSession, removeSession, scheduleSummary, clockLabelHM, makeSession, sortDay } from '../lib/schedule';
 import TimePicker from './TimePicker';
 import ManualBuilder from './ManualBuilder';
+import AddSessionSheet from './AddSessionSheet';
 import { serif, sans } from '../theme/fonts';
 
 const FULLNESS = [
@@ -100,6 +101,8 @@ export default function ScheduleFlow() {
   const [pending, setPending] = useState(null); // { toDay, hour, min } staged until "Enter"
   const openRetime = (key, dayIdx, s) => { setRetiming(key); setPending({ toDay: dayIdx, hour: s.hour, min: s.min || 0 }); };
   const closeRetime = () => { setRetiming(null); setPending(null); };
+  const [addDay, setAddDay] = useState(null); // day index a new session is being added to (result view)
+  const addToPlan = (di, idn, time, mins) => setPlan((p) => p.map((d, i) => (i !== di ? d : { ...d, rest: false, sessions: sortDay([...d.sessions, makeSession(idn, time, mins)]) })));
 
   // if a schedule already exists, open straight to its result (View full week)
   useEffect(() => {
@@ -312,10 +315,9 @@ export default function ScheduleFlow() {
                       <Icon name="moon" size={16} stroke={2} color={t.inkFaint} />
                       <Text style={{ fontSize: 14, fontFamily: sans(600), color: t.inkFaint }}>Rest — kept clear</Text>
                     </View>
-                  ) : d.sessions.length === 0 ? (
-                    <Text style={{ fontSize: 13.5, fontFamily: sans(500), color: t.inkFaint, paddingVertical: 12 }}>—</Text>
                   ) : (
-                    d.sessions.map((s, sessIdx) => {
+                    <>
+                    {d.sessions.map((s, sessIdx) => {
                       const idn = byId[s.identityId]; const c = idn ? colorsFor(idn) : { color: t.ink, soft: t.surface2 };
                       const key = `${dayIdx}:${sessIdx}`;
                       const open = retiming === key;
@@ -390,7 +392,12 @@ export default function ScheduleFlow() {
                           )}
                         </View>
                       );
-                    })
+                    })}
+                    <Pressable onPress={() => setAddDay(dayIdx)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 10, borderRadius: t.radii.md, borderWidth: 1, borderStyle: 'dashed', borderColor: t.line, opacity: pressed ? 0.6 : 1 })}>
+                      <Icon name="plus" size={15} stroke={2.2} color={t.inkSoft} />
+                      <Text style={{ fontSize: 13, fontFamily: sans(700), color: t.inkSoft }}>Add session</Text>
+                    </Pressable>
+                    </>
                   )}
                 </View>
               </View>
@@ -405,6 +412,14 @@ export default function ScheduleFlow() {
             <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.inkSoft }}>Plan a different way</Text>
           </Button>
         </ScrollView>
+        {addDay != null && (
+          <AddSessionSheet
+            dayLabel={`${plan[addDay].day} ${plan[addDay].date.split(' ')[1]}`}
+            identities={identities}
+            onAdd={(idn, time, mins) => { addToPlan(addDay, idn, time, mins); setAddDay(null); }}
+            onClose={() => setAddDay(null)}
+          />
+        )}
       </View>
     );
   }
