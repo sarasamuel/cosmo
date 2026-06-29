@@ -819,7 +819,10 @@ export function StoreProvider({ children }) {
     setIdentities((prev) => prev.map((i) => {
       if (i.id !== id) return i;
       const next = { ...i };
-      if (typeof changes.name === 'string' && changes.name.trim()) next.name = changes.name.trim();
+      if (typeof changes.name === 'string' && changes.name.trim()) {
+        next.name = changes.name.trim();
+        next.glyph = next.name[0].toUpperCase(); // keep the letter glyph in sync with the name
+      }
       if (typeof changes.hue === 'number') {
         next.hue = ((changes.hue % 360) + 360) % 360;
         next.palette = undefined; // let the custom hue win over a canonical palette

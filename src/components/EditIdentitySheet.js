@@ -85,7 +85,7 @@ export default function EditIdentitySheet() {
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* live preview — glyph in the chosen color */}
           <View style={{ alignItems: 'center', marginBottom: 22 }}>
-            <Glyph char={subject.glyph} size={64} fontSize={29} color={previewColor} />
+            <Glyph char={(name.trim()[0] || subject.glyph).toUpperCase()} size={64} fontSize={29} color={previewColor} />
           </View>
 
           <Text style={{ fontFamily: serif(500), fontSize: 27, color: t.ink, marginBottom: 4 }}>Edit identity</Text>
