@@ -62,8 +62,8 @@ export default function RhythmStrip() {
   const caption = need === 0
     ? 'Rhythm kept for the week — five of seven. Anything more is just for you.'
     : remaining >= need
-    ? `${need} more ${need === 1 ? 'night' : 'nights'} keeps this week. ${remaining} left. A missed night never counts against you.`
-    : 'A gentle week — five of seven keeps it, and there’s always next week. A missed night never counts against you.';
+    ? `${need} more ${need === 1 ? 'night' : 'nights'} keeps this week's rhythm. A missed night never counts against you.`
+    : 'A gentle week — five of seven keeps the rhythm, and there’s always next week. A missed night never counts against you.';
 
   return (
     <Card style={{ marginTop: 26, paddingHorizontal: 22, paddingVertical: 20 }}>
@@ -81,7 +81,7 @@ export default function RhythmStrip() {
             <Text style={{ fontFamily: serif(500), fontSize: 24, color: t.ink }}>Finding your rhythm</Text>
           )}
           <Text style={{ fontSize: 14, color: t.inkSoft, fontFamily: sans(500), marginTop: 3 }}>
-            {r.weeks > 0 && r.since ? `Checking in, most nights, since ${r.since}` : 'Check in most nights to build a rhythm'}
+            {r.weeks > 0 && r.since ? `Checking in, most nights, since ${r.since}` : 'Check in most nights to build a rhythm.'}
           </Text>
         </View>
         <Pressable onPress={() => setOpen((o) => !o)} hitSlop={8} style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: t.line, backgroundColor: t.surface2, opacity: pressed ? 0.6 : 1 })}>
