@@ -140,7 +140,7 @@ export function weekSummary(identities, lastWeekRows) {
 export function lastWeekTrend(weeks) {
   const list = weeks || [];
   if (list.length === 0) {
-    return { week: '—', aligned: 0, delta: 0, note: 'No completed weeks yet — your first reflection will appear here.' };
+    return { week: '—', aligned: 0, delta: 0, note: 'No completed weeks yet. Your first reflection will appear here.' };
   }
   const last = list[0];
   const prev = list[1];

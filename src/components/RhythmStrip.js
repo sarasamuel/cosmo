@@ -62,7 +62,7 @@ export default function RhythmStrip() {
   const caption = need === 0
     ? 'Rhythm kept for the week — five of seven. Anything more is just for you.'
     : remaining >= need
-    ? `${need} more ${need === 1 ? 'night' : 'nights'} keeps this week — ${remaining} left, weekend included. A missed night never counts against you.`
+    ? `${need} more ${need === 1 ? 'night' : 'nights'} keeps this week. ${remaining} left. A missed night never counts against you.`
     : 'A gentle week — five of seven keeps it, and there’s always next week. A missed night never counts against you.';
 
   return (

@@ -95,7 +95,7 @@ export default function PastWeeks({ weeks, year }) {
     return (
       <Card style={{ paddingVertical: 22, paddingHorizontal: 22 }}>
         <Text style={{ fontSize: 14.5, fontFamily: sans(500), color: t.inkFaint, textAlign: 'center', lineHeight: 22 }}>
-          No completed weeks yet — once you’ve lived a full week, it’ll appear here with your plan against what you actually lived.
+          No completed weeks yet. Once you’ve lived a full week, it’ll appear here with your plan against what you actually lived.
         </Text>
       </Card>
     );
