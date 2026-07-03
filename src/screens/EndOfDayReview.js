@@ -3,12 +3,12 @@
    today applies them all at once via the store's commitReview. Mounted
    full-screen by AppShell. */
 import React, { useState } from 'react';
-import { View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore, useTheme } from '../store/Store';
 import { Glyph } from '../components/primitives';
 import Icon from '../components/Icon';
-import { usualMins } from '../data/data';
+import { usualMins, noteSuggestions } from '../data/data';
 import { useScreenPad, BREAKPOINT } from '../lib/layout';
 import { serif, sans } from '../theme/fonts';
 
@@ -59,16 +59,19 @@ function Stepper({ mins, onAdjust }) {
   );
 }
 
-function ReviewItem({ idn, colorsFor, selected, mins, onToggle, onAdjust }) {
+function ReviewItem({ idn, colorsFor, selected, entry, onToggle, onAdjust, onNote, onMilestone }) {
   const { t } = useTheme();
   const c = colorsFor(idn);
   const { width } = useWindowDimensions();
   const twoCol = width >= BREAKPOINT.twoCol;
+  const mins = entry ? entry.mins : usualMins(idn);
+  const note = entry ? entry.note : '';
+  const milestone = !!(entry && entry.milestone);
+  const hasNote = !!note.trim();
 
   return (
-    <Pressable
-      onPress={onToggle}
-      style={({ pressed }) => ({
+    <View
+      style={{
         width: twoCol ? '48%' : '100%',
         flexGrow: 1,
         borderRadius: t.radii.md,
@@ -77,10 +80,11 @@ function ReviewItem({ idn, colorsFor, selected, mins, onToggle, onAdjust }) {
         backgroundColor: selected ? c.soft : t.surface,
         paddingVertical: 16,
         paddingHorizontal: 16,
-        opacity: pressed ? 0.85 : 1,
-      })}
+      }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      {/* header taps to select/deselect (kept separate so editing the note below
+          never toggles the card) */}
+      <Pressable onPress={onToggle} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, opacity: pressed ? 0.85 : 1 })}>
         <Glyph char={idn.glyph} size={40} fontSize={18} color={c.color} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text numberOfLines={1} style={{ fontSize: 16, fontFamily: sans(600), color: t.ink }}>{idn.name}</Text>
@@ -93,14 +97,45 @@ function ReviewItem({ idn, colorsFor, selected, mins, onToggle, onAdjust }) {
             <Icon name="check" size={13} stroke={2.6} color="#fff" />
           </View>
         )}
-      </View>
+      </Pressable>
 
       {selected && (
-        <View style={{ marginTop: 14 }}>
+        <View style={{ marginTop: 14, gap: 12 }}>
           <Stepper mins={mins} onAdjust={onAdjust} />
+
+          {/* optional note — saved to your Journal, exactly like the log sheet */}
+          <TextInput
+            value={note}
+            onChangeText={onNote}
+            placeholder={`Note · e.g. ${noteSuggestions(idn)[0]}…`}
+            placeholderTextColor={t.inkFaint}
+            maxLength={140}
+            returnKeyType="done"
+            style={{ borderWidth: 1.5, borderColor: t.line, borderRadius: t.radii.md, paddingHorizontal: 14, paddingVertical: 11, fontSize: 15, fontFamily: sans(500), color: t.ink, backgroundColor: t.surface }}
+          />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {noteSuggestions(idn).map((s) => {
+              const on = note.trim() === s;
+              return (
+                <Pressable key={s} onPress={() => onNote(s)} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: on ? c.color : t.line, backgroundColor: on ? c.soft : t.surface2 }}>
+                  <Text style={{ fontSize: 12.5, fontFamily: sans(600), color: on ? c.color : t.inkSoft }}>{s}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* mark this note as a milestone — only meaningful with a note */}
+          <Pressable
+            onPress={() => onMilestone(!milestone)}
+            disabled={!hasNote}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5, borderColor: milestone ? '#f6bf5c' : t.line, backgroundColor: milestone ? 'rgba(246,191,92,0.14)' : t.surface2, opacity: hasNote ? 1 : 0.5 }}
+          >
+            <Icon name="star" size={14} color={milestone ? '#f6bf5c' : t.inkFaint} />
+            <Text style={{ fontSize: 13, fontFamily: sans(700), color: milestone ? t.ink : t.inkSoft }}>Mark as milestone</Text>
+          </Pressable>
         </View>
       )}
-    </Pressable>
+    </View>
   );
 }
 
@@ -110,27 +145,28 @@ export default function EndOfDayReview({ onClose }) {
   const insets = useSafeAreaInsets();
   const pad = useScreenPad();
 
-  const [picks, setPicks] = useState({}); // id -> minutes (present === selected)
+  const [picks, setPicks] = useState({}); // id -> { mins, note, milestone } (present === selected)
 
   const weekday = WEEKDAYS[new Date().getDay()];
-  const total = Object.values(picks).reduce((s, m) => s + m, 0);
+  const total = Object.values(picks).reduce((s, v) => s + v.mins, 0);
   const count = Object.keys(picks).length;
 
   const toggle = (idn) =>
     setPicks((p) => {
       const next = { ...p };
       if (next[idn.id] != null) delete next[idn.id];
-      else next[idn.id] = usualMins(idn);
+      else next[idn.id] = { mins: usualMins(idn), note: '', milestone: false };
       return next;
     });
+  const patch = (id, changes) => setPicks((p) => (p[id] ? { ...p, [id]: { ...p[id], ...changes } } : p));
   const adjust = (idn, delta) =>
-    setPicks((p) => ({ ...p, [idn.id]: Math.max(MIN, Math.min(MAX, (p[idn.id] || usualMins(idn)) + delta)) }));
+    setPicks((p) => (p[idn.id] ? { ...p, [idn.id]: { ...p[idn.id], mins: Math.max(MIN, Math.min(MAX, p[idn.id].mins + delta)) } } : p));
 
-  const save = () => commitReview(Object.entries(picks).map(([id, mins]) => ({ id, mins })));
+  const save = () => commitReview(Object.entries(picks).map(([id, v]) => ({ id, mins: v.mins, note: v.note, milestone: v.milestone && !!v.note.trim() })));
 
   return (
-    <View style={{ flex: 1, paddingHorizontal: pad }}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 8, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView style={{ flex: 1, paddingHorizontal: pad }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 8, paddingBottom: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         {/* header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <Text style={{ fontSize: 13, fontFamily: sans(600), letterSpacing: 2.1, textTransform: 'uppercase', color: t.inkFaint }}>
@@ -152,9 +188,11 @@ export default function EndOfDayReview({ onClose }) {
               idn={idn}
               colorsFor={colorsFor}
               selected={picks[idn.id] != null}
-              mins={picks[idn.id]}
+              entry={picks[idn.id]}
               onToggle={() => toggle(idn)}
               onAdjust={(d) => adjust(idn, d)}
+              onNote={(text) => patch(idn.id, { note: text })}
+              onMilestone={(v) => patch(idn.id, { milestone: v })}
             />
           ))}
         </View>
@@ -182,6 +220,6 @@ export default function EndOfDayReview({ onClose }) {
           <Text style={{ fontFamily: sans(700), fontSize: 16, color: count ? t.bg : t.inkFaint }}>Save today</Text>
         </Pressable>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }

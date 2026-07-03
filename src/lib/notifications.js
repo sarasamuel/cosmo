@@ -60,13 +60,13 @@ export async function scheduleDaily(hour, minute) {
       identifier: NIGHTLY_ID, // so cancelDaily() removes only this, leaving session reminders intact
       content: { title: TITLE, body: BODY },
       // TEMPORARY — fires ~5s after you toggle the reminder on
-      // trigger: {
-      //   type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      //   seconds: 5,
-      //   repeats: false,
-      //   channelId: CHANNEL,
-      // },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute, channelId: CHANNEL },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 5,
+        repeats: false,
+        channelId: CHANNEL,
+      },
+      // trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute, channelId: CHANNEL },
     });
     return true;
   } catch (e) {

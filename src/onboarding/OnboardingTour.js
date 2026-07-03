@@ -210,7 +210,7 @@ function VizRhythm() {
         ))}
       </View>
       <Text style={{ fontSize: 12.5, lineHeight: 18, fontFamily: sans(500), color: t.inkSoft, marginTop: 16 }}>
-        Five of seven keeps the week — a missed night never counts against you.
+        Five of seven days keeps the rhythm. A missed night never counts against you.
       </Text>
     </VizCard>
   );

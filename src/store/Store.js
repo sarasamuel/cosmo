@@ -750,9 +750,10 @@ export function StoreProvider({ children }) {
     showToast({ kind: 'notice', message: `${found.name} is resting this week — log freely.` });
   }, [identities, showToast]);
 
-  // End-of-day review: apply several logs at once. entries: [{ id, mins }].
-  // Reuses commitLog per entry (so identity bumps / relax / sessions all stay
-  // correct), silenced, then shows one summary toast.
+  // End-of-day review: apply several logs at once. entries:
+  // [{ id, mins, note?, milestone? }]. Reuses commitLog per entry (so identity
+  // bumps / relax / sessions and any note→journal entry all stay correct),
+  // silenced, then shows one summary toast.
   const openReview = useCallback(() => setReview(true), []);
   const closeReview = useCallback(() => setReview(false), []);
   const commitReview = useCallback(
@@ -760,10 +761,10 @@ export function StoreProvider({ children }) {
       const targets = liveRelax.tracked ? [...liveIdentities, liveRelax] : liveIdentities;
       let totalMins = 0;
       let count = 0;
-      entries.forEach(({ id, mins }) => {
+      entries.forEach(({ id, mins, note, milestone }) => {
         const idn = targets.find((x) => x.id === id);
         if (idn && mins > 0) {
-          commitLog(idn, mins, undefined, { silent: true });
+          commitLog(idn, mins, note, { silent: true, milestone: !!milestone });
           totalMins += mins;
           count += 1;
         }
