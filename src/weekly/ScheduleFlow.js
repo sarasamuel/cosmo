@@ -3,14 +3,15 @@
    sessions to help hit it. No free-text anywhere; all constraints are structured
    chips/sliders/segments. Cosmo "arranges" / "lays out" — never "generates". */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, View, Text, Pressable, Animated, Easing } from 'react-native';
+import { ScrollView, View, Text, Pressable, Animated, Easing, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useStore, useTheme } from '../store/Store';
 import { Glyph, Button } from '../components/primitives';
 import Icon from '../components/Icon';
 import { useScreenPad } from '../lib/layout';
-import { fmtMins, FREE_HOURS_WEEK } from '../data/data';
+import { fmtMins, FREE_HOURS_WEEK, weekStartMs } from '../data/data';
 import { scheduleWeek, placeSession, removeSession, scheduleSummary, clockLabelHM, makeSession, sortDay } from '../lib/schedule';
+import { exportPlanToCalendar } from '../lib/calendar';
 import TimePicker from './TimePicker';
 import ManualBuilder from './ManualBuilder';
 import AddSessionSheet from './AddSessionSheet';
@@ -103,6 +104,22 @@ export default function ScheduleFlow() {
   const closeRetime = () => { setRetiming(null); setPending(null); };
   const [addDay, setAddDay] = useState(null); // day index a new session is being added to (result view)
   const addToPlan = (di, idn, time, mins) => setPlan((p) => p.map((d, i) => (i !== di ? d : { ...d, rest: false, sessions: sortDay([...d.sessions, makeSession(idn, time, mins)]) })));
+  const [exporting, setExporting] = useState(false);
+  const exportToCalendar = async () => {
+    if (exporting) return;
+    setExporting(true);
+    const res = await exportPlanToCalendar(plan, weekStartMs());
+    setExporting(false);
+    if (res.ok && res.count > 0) {
+      const title = res.replaced ? 'Calendar updated' : 'Added to calendar';
+      const body = res.replaced
+        ? `Your calendar now matches this week — ${res.count} session${res.count === 1 ? '' : 's'}.`
+        : `${res.count} session${res.count === 1 ? '' : 's'} added to your calendar.`;
+      Alert.alert(title, body);
+    } else if (res.ok) Alert.alert('Nothing to add', 'This week has no sessions yet.');
+    else if (res.error === 'permission') Alert.alert('Calendar access needed', 'Turn on calendar access for Cosmo in Settings to add your week.');
+    else Alert.alert("Couldn't add to calendar", 'No writable calendar was found on this device.');
+  };
 
   // if a schedule already exists, open straight to its result (View full week)
   useEffect(() => {
@@ -407,6 +424,10 @@ export default function ScheduleFlow() {
           <Button onPress={() => commitSchedule(plan, committedConstraints)} style={{ marginTop: 26 }}>
             <Icon name="check" size={18} stroke={2.4} color={t.bg} />
             <Text style={{ marginLeft: 8, color: t.bg, fontFamily: sans(600), fontSize: 17 }}>Add to my week</Text>
+          </Button>
+          <Button variant="soft" onPress={exportToCalendar} disabled={exporting} style={{ marginTop: 8 }}>
+            <Icon name="calendar" size={17} stroke={2} color={t.ink} />
+            <Text style={{ marginLeft: 8, fontFamily: sans(600), fontSize: 16, color: t.ink }}>{exporting ? 'Adding…' : 'Add to calendar'}</Text>
           </Button>
           <Button variant="ghost" onPress={() => { setMode('fork'); closeRetime(); }} style={{ marginTop: 6 }}>
             <Text style={{ fontSize: 16, fontFamily: sans(600), color: t.inkSoft }}>Plan a different way</Text>

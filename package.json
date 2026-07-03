@@ -9,6 +9,7 @@
     "@react-native-community/slider": "5.1.2",
     "@supabase/supabase-js": "^2.108.1",
     "expo": "~55.0.26",
+    "expo-calendar": "~55.0.16",
     "expo-dev-client": "~55.0.35",
     "expo-font": "~55.0.8",
     "expo-linear-gradient": "~55.0.14",

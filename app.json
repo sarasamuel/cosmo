@@ -37,7 +37,14 @@
     "plugins": [
       "expo-font",
       "expo-notifications",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Cosmo adds your planned sessions to your calendar so you can see them alongside the rest of your week.",
+          "remindersPermission": "Cosmo can add your planned sessions as reminders."
+        }
+      ]
     ],
     "extra": {
       "eas": {
