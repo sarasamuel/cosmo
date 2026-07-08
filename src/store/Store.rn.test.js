@@ -25,6 +25,8 @@ jest.mock('../lib/notifications', () => ({
   cancelNightlyToday: jest.fn(async () => {}),
   scheduleNeglectNudges: jest.fn(async () => {}),
   cancelNeglectNudges: jest.fn(async () => {}),
+  scheduleMorning: jest.fn(async () => {}),
+  cancelMorning: jest.fn(async () => {}),
 }));
 jest.mock('../lib/auth', () => ({
   isConfigured: false,

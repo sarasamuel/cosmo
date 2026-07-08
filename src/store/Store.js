@@ -191,7 +191,7 @@ export function StoreProvider({ children }) {
   const logTargetsRef = useRef([]); // fresh log targets for the (empty-deps) tap listener below
   const routeTap = (resp) => {
     const kind = tapKind(resp);
-    if (kind === 'schedule') return; // session reminder → no navigation
+    if (kind === 'schedule' || kind === 'morning') return; // session/morning → just open the app
     if (kind === 'plan-week') { setPlanOpen(true); return; } // weekly nudge → plan sheet
     if (kind === 'neglect') {
       // drill-sergeant neglect nudge → the log sheet, preselected to the nudged identity
@@ -233,11 +233,13 @@ export function StoreProvider({ children }) {
       notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0, coachStyle);
       if (reminder.enabled) notifications.scheduleDaily(reminder.hour, reminder.minute, coachStyle);
       if (coachStyle === 'drill') {
+        notifications.scheduleMorning(); // the 9am day-starter rides drill mode
         // clear-then-arm so identities that fell out of eligibility (rested,
         // retired) don't keep a stale nudge in flight
         await notifications.cancelNeglectNudges(identities.map((i) => i.id));
         notifications.scheduleNeglectNudges(buildNeglectItems(identities, sessions));
       } else {
+        notifications.cancelMorning();
         notifications.cancelNeglectNudges(identities.map((i) => i.id));
       }
     })();
@@ -605,7 +607,10 @@ export function StoreProvider({ children }) {
       if (!granted) return;
       notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0, coachStyle); // weekly plan nudge rides the master switch
       if (reminder.enabled) notifications.scheduleDaily(reminder.hour, reminder.minute, coachStyle);
-      if (coachStyle === 'drill') notifications.scheduleNeglectNudges(buildNeglectItems(identities, sessions));
+      if (coachStyle === 'drill') {
+        notifications.scheduleMorning();
+        notifications.scheduleNeglectNudges(buildNeglectItems(identities, sessions));
+      }
       if (scheduleData && Array.isArray(scheduleData.plan) && scheduleData.weekStart === weekStartMs()) {
         const ids = await notifications.scheduleSessionReminders(buildSessionItems(scheduleData.plan, scheduleData.weekStart, identities, coachStyle));
         const data = { ...scheduleData, notifIds: ids };

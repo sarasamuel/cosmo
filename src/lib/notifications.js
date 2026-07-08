@@ -107,6 +107,44 @@ export async function scheduleDaily(hour, minute, style = 'gentle') {
   }
 }
 
+const MORNING_ID = 'cosmo-morning'; // drill-only 9am day-starter, cancellable on its own
+const MORNING_HOUR = 9;
+const MORNING_COPY = { title: 'Morning check.', body: 'What gets your time today? Decide now, not at 10 PM.' };
+
+// Drill Sergeant's fixed 9am daily reminder — forward-looking (about the day
+// ahead), so unlike the nightly it needs no truth gate and can be a single
+// repeating trigger. Tap carries data.kind = 'morning' (no navigation).
+export async function scheduleMorning() {
+  try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync(CHANNEL, {
+        name: 'Nightly reminders',
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+    }
+    try { await Notifications.cancelScheduledNotificationAsync(MORNING_ID); } catch (e) { /* none yet */ }
+    await Notifications.scheduleNotificationAsync({
+      identifier: MORNING_ID,
+      content: { title: MORNING_COPY.title, body: MORNING_COPY.body, data: { kind: 'morning' } },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: MORNING_HOUR, minute: 0, channelId: CHANNEL },
+    });
+    return true;
+  } catch (e) {
+    warn('schedule-morning', e);
+    return false;
+  }
+}
+
+export async function cancelMorning() {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(MORNING_ID); // only the morning check
+    return true;
+  } catch (e) {
+    warn('cancel-morning', e);
+    return false;
+  }
+}
+
 // Drill's truth gate: the user logged something today, so tonight's "nothing
 // logged" nightly would be a lie — cancel just today's one-shot. Harmless in
 // gentle mode (the date-keyed id doesn't exist there).

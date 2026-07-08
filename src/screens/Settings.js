@@ -209,7 +209,7 @@ export default function Settings({ onBack }) {
               </View>
               <Text style={{ fontSize: 12.5, color: t.inkFaint, fontFamily: sans(600), marginTop: 10, lineHeight: 18 }}>
                 {coachStyle === 'drill'
-                  ? 'Firmer voice, more often: nudges when an identity goes 3 days untended, a second ping when sessions start, and a nightly that only fires on days with nothing logged.'
+                  ? 'Firmer voice, more often: a 9 AM morning check, nudges when an identity goes 3 days untended, a second ping when sessions start, and a nightly that only fires on days with nothing logged.'
                   : 'Soft nudges on your schedule. Nothing chases you.'}
               </Text>
             </View>
