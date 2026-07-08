@@ -16,6 +16,7 @@ import {
   weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS, mergeSessions, newSessionId, WEEK_STARTS_ON, lastWeekStartMs,
 } from '../data/data';
 import { themes, identityColors } from '../theme/theme';
+import { buildSessionItems, buildNeglectItems } from '../lib/nudges';
 
 const StoreContext = createContext(null);
 
@@ -24,6 +25,7 @@ const KEY_STARTED = 'cosmo-started';
 const KEY_WEEK = 'cosmo-week'; // weekPlanned flag (a plan has been committed)
 const KEY_ALLMET = 'cosmo-allmet'; // week-start (ms) the whole-week triumph last fired for (fire once per week)
 const KEY_RECAP = 'cosmo-recap'; // week-start (ms) the end-of-week recap was last shown in (show once per week)
+const KEY_STYLE = 'cosmo-style'; // coaching style for notifications: 'gentle' | 'drill'
 const KEY_FORM = 'cosmo-form';
 const KEY_DATA = 'cosmo-data'; // mutable domain state (identities/retired/relax/sessions)
 const KEY_REMINDER = 'cosmo-reminder'; // { enabled, hour, minute } for the daily local reminder
@@ -49,21 +51,8 @@ const PLAN_REMINDER_HOUR = 21;
 // "30 minutes before each session" reminder payloads, derived from an arranged
 // plan. `weekStart` anchors day k to a real calendar date. Past times are
 // filtered downstream (scheduleSessionReminders skips them).
-function buildReminderItems(plan, weekStart, identities) {
-  const nameOf = (id) => { const i = (identities || []).find((x) => x.id === id); return i ? i.name : 'your identity'; };
-  const items = [];
-  (plan || []).forEach((d, k) => {
-    (d.sessions || []).forEach((s) => {
-      const when = new Date(weekStart);
-      when.setDate(when.getDate() + k);
-      when.setHours(s.hour, 0, 0, 0);
-      when.setMinutes(when.getMinutes() - 30);
-      const name = nameOf(s.identityId);
-      items.push({ date: when, identityId: s.identityId, title: `${name} in 30 minutes`, body: `Time to tend to ${name} — your ${s.mins}m session is coming up.` });
-    });
-  });
-  return items;
-}
+// Session-reminder payloads now come from lib/nudges (style-aware: gentle keeps
+// the single 30-minutes-before nudge; drill adds one at session start).
 
 export function StoreProvider({ children }) {
   const [form, setFormState] = useState('orbit');
@@ -102,6 +91,7 @@ export function StoreProvider({ children }) {
   const [recapWeek, setRecapWeek] = useState(0); // week-start (ms) the recap was last shown in (0 = never)
   const [reminder, setReminder] = useState(DEFAULT_REMINDER); // daily local notification prefs
   const [remindersOn, setRemindersOnState] = useState(true); // master switch for all notifications (default on)
+  const [coachStyle, setCoachStyleState] = useState('gentle'); // notification voice: 'gentle' | 'drill'
   const [session, setSession] = useState(null); // Supabase auth session (null = signed out / offline-only)
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
   const [lastSyncedAt, setLastSyncedAt] = useState(0);  // ms of last successful cloud push/pull
@@ -151,6 +141,7 @@ export function StoreProvider({ children }) {
       { const ro = await storage.getItem(KEY_REMINDERS_ON); if (ro === '0') setRemindersOnState(false); }
       { const tr = await storage.getItem(KEY_TOUR); if (tr === '1') setTourSeen(true); }
       { const rc = Number(await storage.getItem(KEY_RECAP)); if (Number.isFinite(rc) && rc) setRecapWeek(rc); }
+      { const cs = await storage.getItem(KEY_STYLE); if (cs === 'drill') setCoachStyleState('drill'); }
       const fhNum = Number(fh);
       if (fh != null && Number.isFinite(fhNum)) {
         setFreeHoursState(Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, fhNum)));
@@ -197,41 +188,61 @@ export function StoreProvider({ children }) {
   // a stale one doesn't. Session-reminder taps (data.kind === 'schedule') are NOT
   // the nightly review, so they don't open it.
   const tapKind = (resp) => resp?.notification?.request?.content?.data?.kind;
-  const routeTap = (kind) => {
+  const logTargetsRef = useRef([]); // fresh log targets for the (empty-deps) tap listener below
+  const routeTap = (resp) => {
+    const kind = tapKind(resp);
     if (kind === 'schedule') return; // session reminder → no navigation
-    if (kind === 'plan-week') setPlanOpen(true); // weekly nudge → open the plan sheet
-    else setReview(true); // nightly → end-of-day review
+    if (kind === 'plan-week') { setPlanOpen(true); return; } // weekly nudge → plan sheet
+    if (kind === 'neglect') {
+      // drill-sergeant neglect nudge → the log sheet, preselected to the nudged identity
+      const id = resp?.notification?.request?.content?.data?.identityId;
+      const idn = (logTargetsRef.current || []).find((x) => x.id === id);
+      setLogPreset(idn && idn.id ? idn : null);
+      setLogOpen(true);
+      return;
+    }
+    setReview(true); // nightly → end-of-day review
   };
   useEffect(() => {
-    const unsub = notifications.addResponseListener((resp) => routeTap(tapKind(resp)));
+    const unsub = notifications.addResponseListener((resp) => routeTap(resp));
     (async () => {
       const resp = await notifications.getInitialResponse();
-      const kind = tapKind(resp);
-      if (!resp || kind === 'schedule') return;
+      if (!resp || tapKind(resp) === 'schedule') return;
       const stamp = String((resp.notification && resp.notification.date) || '');
       if (stamp) {
         const seen = await storage.getItem(KEY_LASTNOTIF);
         if (stamp === seen) return; // already handled this exact delivery
         storage.setItem(KEY_LASTNOTIF, stamp);
       }
-      routeTap(kind);
+      routeTap(resp);
     })();
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Ensure the weekly "plan your week" reminder is scheduled once reminders are
-  // on — covers users from before this nudge existed. Permission-gated so it
-  // never prompts; the WEEKLY trigger persists, so this is an idempotent
-  // re-assertion on launch (scheduleWeekly cancels-then-adds by fixed id).
+  // Assert the standing notification state on launch and whenever the coaching
+  // style or master switch changes: the weekly plan nudge always; the nightly in
+  // the current voice (drill's 7-day one-shot window needs this re-arm to never
+  // run dry); neglect nudges armed in drill, cleared in gentle. Permission-gated
+  // so it never prompts; everything cancels-then-adds by fixed id, so this is
+  // idempotent.
   useEffect(() => {
     if (!hydrated || !remindersOn) return;
     (async () => {
-      if (await notifications.hasPermission()) {
-        notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0);
+      if (!(await notifications.hasPermission())) return;
+      notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0, coachStyle);
+      if (reminder.enabled) notifications.scheduleDaily(reminder.hour, reminder.minute, coachStyle);
+      if (coachStyle === 'drill') {
+        // clear-then-arm so identities that fell out of eligibility (rested,
+        // retired) don't keep a stale nudge in flight
+        await notifications.cancelNeglectNudges(identities.map((i) => i.id));
+        notifications.scheduleNeglectNudges(buildNeglectItems(identities, sessions));
+      } else {
+        notifications.cancelNeglectNudges(identities.map((i) => i.id));
       }
     })();
-  }, [hydrated, remindersOn]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, remindersOn, coachStyle]);
 
   // Track the Supabase auth session (cloud backup). No-op when Supabase isn't
   // configured — the app stays fully usable offline. Sync of the domain state is
@@ -262,13 +273,13 @@ export function StoreProvider({ children }) {
   // in-memory state to a pristine pre-onboarding slate (routes back to AuthFlow).
   const resetLocal = useCallback(() => {
     [KEY_THEME, KEY_STARTED, KEY_WEEK, KEY_FORM, KEY_DATA, KEY_REMINDER, KEY_LASTNOTIF,
-      KEY_FREEHOURS, KEY_STAMP, KEY_NAME, KEY_AUTHSEEN, KEY_ALLMET, KEY_RECAP, KEY_SYNCED, KEY_SYNCEDSTAMP, KEY_TOUR]
+      KEY_FREEHOURS, KEY_STAMP, KEY_NAME, KEY_AUTHSEEN, KEY_ALLMET, KEY_RECAP, KEY_STYLE, KEY_SYNCED, KEY_SYNCEDSTAMP, KEY_TOUR]
       .forEach((k) => storage.removeItem(k));
     setTourSeen(false);
     notifications.cancelAll(); // nightly + weekly plan nudge + any session reminders
     setIdentities(IDENTITIES); setRetired([]); setRelax(RELAX); setSessions(SESSIONS); setPlanHistory({});
     setThemeName('dark'); setFormState('orbit'); setFreeHoursState(FREE_HOURS_WEEK.def);
-    setReminder(DEFAULT_REMINDER); setWeekPlanned(false); setAllMetWeek(0); setRecapWeek(0); setRecapOpen(false);
+    setReminder(DEFAULT_REMINDER); setWeekPlanned(false); setAllMetWeek(0); setRecapWeek(0); setRecapOpen(false); setCoachStyleState('gentle');
     setUserNameState(''); setAuthSeen(false); setStarted(false);
     stampRef.current = 0; syncedStampRef.current = 0;
     setSyncStatus('idle'); setLastSyncedAt(0);
@@ -566,10 +577,10 @@ export function StoreProvider({ children }) {
       storage.setItem(KEY_REMINDER, JSON.stringify(off));
       return;
     }
-    await notifications.scheduleDaily(next.hour, next.minute);
+    await notifications.scheduleDaily(next.hour, next.minute, coachStyle);
     // permission was just confirmed → make sure the weekly plan nudge is set too
-    notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0);
-  }, [remindersOn]);
+    notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0, coachStyle);
+  }, [remindersOn, coachStyle]);
   const setReminderEnabled = useCallback((enabled) => persistReminder({ ...reminder, enabled }), [reminder, persistReminder]);
   const setReminderTime = useCallback((hour, minute) => persistReminder({ ...reminder, enabled: true, hour, minute }), [reminder, persistReminder]);
 
@@ -592,16 +603,37 @@ export function StoreProvider({ children }) {
     (async () => {
       const granted = await notifications.ensurePermission();
       if (!granted) return;
-      notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0); // weekly plan nudge rides the master switch
-      if (reminder.enabled) notifications.scheduleDaily(reminder.hour, reminder.minute);
+      notifications.scheduleWeekly(PLAN_REMINDER_WEEKDAY, PLAN_REMINDER_HOUR, 0, coachStyle); // weekly plan nudge rides the master switch
+      if (reminder.enabled) notifications.scheduleDaily(reminder.hour, reminder.minute, coachStyle);
+      if (coachStyle === 'drill') notifications.scheduleNeglectNudges(buildNeglectItems(identities, sessions));
       if (scheduleData && Array.isArray(scheduleData.plan) && scheduleData.weekStart === weekStartMs()) {
-        const ids = await notifications.scheduleSessionReminders(buildReminderItems(scheduleData.plan, scheduleData.weekStart, identities));
+        const ids = await notifications.scheduleSessionReminders(buildSessionItems(scheduleData.plan, scheduleData.weekStart, identities, coachStyle));
         const data = { ...scheduleData, notifIds: ids };
         setScheduleData(data);
         storage.setItem(KEY_SCHEDULE, JSON.stringify(data));
       }
     })();
-  }, [reminder, scheduleData, identities]);
+  }, [reminder, scheduleData, identities, sessions, coachStyle]);
+
+  // Coaching style for notifications: 'gentle' | 'drill'. The standing nudges
+  // (weekly, nightly, neglect) re-assert via the coachStyle-keyed launch effect;
+  // this only persists the choice and re-issues this week's session reminders,
+  // whose copy (and drill's extra at-start ping) differ by style.
+  const setCoachStyle = useCallback((style) => {
+    const s = style === 'drill' ? 'drill' : 'gentle';
+    setCoachStyleState(s);
+    storage.setItem(KEY_STYLE, s);
+    (async () => {
+      if (!remindersOn || !(await notifications.hasPermission())) return;
+      if (scheduleData && Array.isArray(scheduleData.plan) && scheduleData.weekStart === weekStartMs()) {
+        if (Array.isArray(scheduleData.notifIds)) await notifications.cancelReminders(scheduleData.notifIds);
+        const ids = await notifications.scheduleSessionReminders(buildSessionItems(scheduleData.plan, scheduleData.weekStart, identities, s));
+        const data = { ...scheduleData, notifIds: ids };
+        setScheduleData(data);
+        storage.setItem(KEY_SCHEDULE, JSON.stringify(data));
+      }
+    })();
+  }, [remindersOn, scheduleData, identities]);
 
   const openLog = useCallback((preset) => {
     setLogPreset(preset && preset.id ? preset : null);
@@ -687,6 +719,10 @@ export function StoreProvider({ children }) {
     const title = (note || '').trim(); // optional session label typed in the log sheet
     const silent = !!(opts && opts.silent);
 
+    // Drill sergeant truth gate: something was logged today, so tonight's
+    // "nothing logged" nightly would be a lie — cancel just today's one-shot.
+    if (coachStyle === 'drill') notifications.cancelNightlyToday();
+
     // Logging just records a session with a real timestamp — `actual`, `streak`,
     // and `lastActiveDays` re-derive from `sessions` on the next render. No
     // counters to bump, so a new week's window starts fresh automatically.
@@ -713,6 +749,9 @@ export function StoreProvider({ children }) {
     const sid = newSessionId();
     const ts = Date.now();
     setSessions((s) => [{ id: idn.id, sid, label: title || idn.name + ' session', mins, ts, when: fmtWhen(ts) }, ...s]);
+    // drill mode: this identity was just tended → push its neglect nudge out to
+    // a fresh crossing (now + threshold). The builder re-derives copy/eligibility.
+    if (coachStyle === 'drill') notifications.scheduleNeglectNudges(buildNeglectItems([idn], [{ id: idn.id, ts }], ts));
     // a typed note becomes a journal entry tied to this session (a milestone if
     // the user marked it). Empty note → no entry. We never interpret the text.
     if (title) {
@@ -727,7 +766,7 @@ export function StoreProvider({ children }) {
     if (willFireAllMet) return;
     if (metNow && !silent) setCelebrate({ ...cur, actual: newActual });
     else if (!silent) showToast({ kind: 'log', name: idn.name, mins, idn });
-  }, [liveIdentities, relax, sessions, showToast, allMetFired]);
+  }, [liveIdentities, relax, sessions, showToast, allMetFired, coachStyle]);
 
   const clearCelebrate = useCallback(() => setCelebrate(null), []);
 
@@ -749,6 +788,7 @@ export function StoreProvider({ children }) {
       if (!found) return;
       setIdentities((prev) => prev.filter((i) => i.id !== id));
       setRetired((r) => [found, ...r.filter((x) => x.id !== id)]);
+      notifications.cancelNeglectNudges([id]); // a retired identity is never nudged
       setDetail(null);
       setCosmosFocus(null);
       showToast({ kind: 'retire', name: found.name });
@@ -767,6 +807,7 @@ export function StoreProvider({ children }) {
     const next = identities.map((i) => (i.id === id ? { ...i, desired: 0 } : i));
     setIdentities(next);
     setPlanHistory((h) => ({ ...h, [weekStartMs()]: Object.fromEntries(next.map((i) => [i.id, i.desired])) }));
+    notifications.cancelNeglectNudges([id]); // resting = no pressure, including from the drill sergeant
     showToast({ kind: 'notice', message: `${found.name} is resting this week — log freely.` });
   }, [identities, showToast]);
 
@@ -889,7 +930,7 @@ export function StoreProvider({ children }) {
     let granted = false;
     if (remindersOn) {
       granted = await notifications.ensurePermission(); // prompts only if not asked yet
-      if (granted) notifIds = await notifications.scheduleSessionReminders(buildReminderItems(plan, ws, identities));
+      if (granted) notifIds = await notifications.scheduleSessionReminders(buildSessionItems(plan, ws, identities, coachStyle));
     }
 
     const data = { weekStart: ws, plan, constraints, notifIds };
@@ -907,7 +948,7 @@ export function StoreProvider({ children }) {
     } else {
       showToast({ kind: 'notice', message: 'Week arranged.' }, 2400);
     }
-  }, [scheduleData, identities, remindersOn, showToast]);
+  }, [scheduleData, identities, remindersOn, showToast, coachStyle]);
   const clearSchedule = useCallback(() => {
     if (scheduleData && Array.isArray(scheduleData.notifIds)) notifications.cancelReminders(scheduleData.notifIds);
     setScheduleData(null);
@@ -971,6 +1012,7 @@ export function StoreProvider({ children }) {
   );
   // what you can log time to: your identities, plus Relaxation if it's tracked
   const logTargets = liveRelax.tracked ? [...liveIdentities, liveRelax] : liveIdentities;
+  logTargetsRef.current = logTargets; // keep the tap-routing closure fresh
 
   const value = useMemo(
     () => ({
@@ -1050,6 +1092,8 @@ export function StoreProvider({ children }) {
       setReminderTime,
       remindersOn,
       setRemindersOn,
+      coachStyle,
+      setCoachStyle,
       freeHours,
       setFreeHours,
       setRelaxAllowance,
@@ -1084,7 +1128,7 @@ export function StoreProvider({ children }) {
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
       focusCosmos, clearCosmos, detail, openDetail, closeDetail, editing, openEditIdentity, closeEditIdentity, editIdentity, setIdentityPrefTimes, settingsOpen, openSettings, closeSettings, methodOpen, openMethod, closeMethod,
       scheduleOpen, openSchedule, closeSchedule, schedule, commitSchedule, clearSchedule, review, openReview, closeReview, commitReview,
-      celebrate, clearCelebrate, allMetOpen, closeAllMet, recapOpen, closeRecap, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn, freeHours, setFreeHours, setRelaxAllowance,
+      celebrate, clearCelebrate, allMetOpen, closeAllMet, recapOpen, closeRecap, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn, coachStyle, setCoachStyle, freeHours, setFreeHours, setRelaxAllowance,
       session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, exportData, deleteAccount, userName, setUserName, authSeen, markAuthSeen,
       setDesired, seedOnboarding, enter, restart, toast,
     ]

@@ -21,7 +21,7 @@ const TIME_PRESETS = [{ h: 20, m: 0 }, { h: 21, m: 0 }, { h: 22, m: 0 }];
 export default function Settings({ onBack }) {
   const { t } = useTheme();
   const {
-    userName, setUserName, theme, setTheme, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn,
+    userName, setUserName, theme, setTheme, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn, coachStyle, setCoachStyle,
     session, syncStatus, lastSyncedAt, openBackup, signOut, exportData, deleteAccount, restart,
   } = useStore();
   const pad = useScreenPad();
@@ -190,6 +190,28 @@ export default function Settings({ onBack }) {
                   );
                 })}
               </View>
+
+              {/* coaching style — how the notifications speak, and how often */}
+              <Text style={{ fontSize: 13, fontFamily: sans(700), color: t.inkSoft, marginTop: 18, marginBottom: 12 }}>Coaching style</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {[['gentle', 'Gentle'], ['drill', 'Drill Sergeant']].map(([key, label]) => {
+                  const on = coachStyle === key;
+                  return (
+                    <Pressable
+                      key={key}
+                      onPress={() => setCoachStyle(key)}
+                      style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: on ? 'transparent' : t.line, backgroundColor: on ? t.ink : t.surface2 }}
+                    >
+                      <Text style={{ fontSize: 13.5, fontFamily: sans(700), color: on ? t.bg : t.inkSoft }}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={{ fontSize: 12.5, color: t.inkFaint, fontFamily: sans(600), marginTop: 10, lineHeight: 18 }}>
+                {coachStyle === 'drill'
+                  ? 'Firmer voice, more often: nudges when an identity goes 3 days untended, a second ping when sessions start, and a nightly that only fires on days with nothing logged.'
+                  : 'Soft nudges on your schedule. Nothing chases you.'}
+              </Text>
             </View>
           )}
         </Card>
