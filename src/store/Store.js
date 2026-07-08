@@ -13,7 +13,7 @@ import { DATA_VERSION, migrateData } from '../lib/migrations';
 import {
   IDENTITIES, RELAX, SESSIONS, FREE_HOURS_WEEK,
   alignment as alignmentFn, assignHue, fmtWhen,
-  weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS, mergeSessions, newSessionId, WEEK_STARTS_ON,
+  weekStartMs, weekLabel, weekDayIndex, weekPoints, daysSinceLast, dayStreak, SESSION_POINTS, mergeSessions, newSessionId, WEEK_STARTS_ON, lastWeekStartMs,
 } from '../data/data';
 import { themes, identityColors } from '../theme/theme';
 
@@ -23,6 +23,7 @@ const KEY_THEME = 'cosmo-theme';
 const KEY_STARTED = 'cosmo-started';
 const KEY_WEEK = 'cosmo-week'; // weekPlanned flag (a plan has been committed)
 const KEY_ALLMET = 'cosmo-allmet'; // week-start (ms) the whole-week triumph last fired for (fire once per week)
+const KEY_RECAP = 'cosmo-recap'; // week-start (ms) the end-of-week recap was last shown in (show once per week)
 const KEY_FORM = 'cosmo-form';
 const KEY_DATA = 'cosmo-data'; // mutable domain state (identities/retired/relax/sessions)
 const KEY_REMINDER = 'cosmo-reminder'; // { enabled, hour, minute } for the daily local reminder
@@ -97,6 +98,8 @@ export function StoreProvider({ children }) {
   const [celebrate, setCelebrate] = useState(null); // identity that just reached its intention (celebration overlay)
   const [allMetOpen, setAllMetOpen] = useState(false); // whole-week "every intention met" celebration
   const [allMetWeek, setAllMetWeek] = useState(0); // week-start (ms) the triumph last fired for (0 = never)
+  const [recapOpen, setRecapOpen] = useState(false); // end-of-week recap modal (first open of a new week)
+  const [recapWeek, setRecapWeek] = useState(0); // week-start (ms) the recap was last shown in (0 = never)
   const [reminder, setReminder] = useState(DEFAULT_REMINDER); // daily local notification prefs
   const [remindersOn, setRemindersOnState] = useState(true); // master switch for all notifications (default on)
   const [session, setSession] = useState(null); // Supabase auth session (null = signed out / offline-only)
@@ -147,6 +150,7 @@ export function StoreProvider({ children }) {
       { const sc = await storage.getItem(KEY_SCHEDULE); if (sc) { try { const p = JSON.parse(sc); if (p && p.weekStart && Array.isArray(p.plan)) setScheduleData(p); } catch (e) { /* corrupt → ignore */ } } }
       { const ro = await storage.getItem(KEY_REMINDERS_ON); if (ro === '0') setRemindersOnState(false); }
       { const tr = await storage.getItem(KEY_TOUR); if (tr === '1') setTourSeen(true); }
+      { const rc = Number(await storage.getItem(KEY_RECAP)); if (Number.isFinite(rc) && rc) setRecapWeek(rc); }
       const fhNum = Number(fh);
       if (fh != null && Number.isFinite(fhNum)) {
         setFreeHoursState(Math.max(FREE_HOURS_WEEK.min, Math.min(FREE_HOURS_WEEK.max, fhNum)));
@@ -258,13 +262,13 @@ export function StoreProvider({ children }) {
   // in-memory state to a pristine pre-onboarding slate (routes back to AuthFlow).
   const resetLocal = useCallback(() => {
     [KEY_THEME, KEY_STARTED, KEY_WEEK, KEY_FORM, KEY_DATA, KEY_REMINDER, KEY_LASTNOTIF,
-      KEY_FREEHOURS, KEY_STAMP, KEY_NAME, KEY_AUTHSEEN, KEY_ALLMET, KEY_SYNCED, KEY_SYNCEDSTAMP, KEY_TOUR]
+      KEY_FREEHOURS, KEY_STAMP, KEY_NAME, KEY_AUTHSEEN, KEY_ALLMET, KEY_RECAP, KEY_SYNCED, KEY_SYNCEDSTAMP, KEY_TOUR]
       .forEach((k) => storage.removeItem(k));
     setTourSeen(false);
     notifications.cancelAll(); // nightly + weekly plan nudge + any session reminders
     setIdentities(IDENTITIES); setRetired([]); setRelax(RELAX); setSessions(SESSIONS); setPlanHistory({});
     setThemeName('dark'); setFormState('orbit'); setFreeHoursState(FREE_HOURS_WEEK.def);
-    setReminder(DEFAULT_REMINDER); setWeekPlanned(false); setAllMetWeek(0);
+    setReminder(DEFAULT_REMINDER); setWeekPlanned(false); setAllMetWeek(0); setRecapWeek(0); setRecapOpen(false);
     setUserNameState(''); setAuthSeen(false); setStarted(false);
     stampRef.current = 0; syncedStampRef.current = 0;
     setSyncStatus('idle'); setLastSyncedAt(0);
@@ -660,6 +664,22 @@ export function StoreProvider({ children }) {
     setCelebrate(null); // the triumph supersedes any single-identity celebration
   }, [hydrated, allMetFired, liveIdentities, currentWeek]);
 
+  // End-of-week recap — on the FIRST open of a new week, surface a modal
+  // summarizing the week just completed. Fires once per calendar week (stamped
+  // like the triumph) and only when last week actually has something to recap
+  // (an active identity logged time), so a fresh or absent user never gets an
+  // empty ceremony. The modal itself derives its content from sessions/plans.
+  const closeRecap = useCallback(() => setRecapOpen(false), []);
+  useEffect(() => {
+    if (!hydrated || !started || recapWeek === currentWeek) return;
+    const lastWs = lastWeekStartMs();
+    const hasLastWeek = identities.some((i) => weekPoints(sessions, i.id, lastWs) > 0);
+    if (!hasLastWeek) return;
+    setRecapWeek(currentWeek);
+    storage.setItem(KEY_RECAP, String(currentWeek));
+    setRecapOpen(true);
+  }, [hydrated, started, recapWeek, currentWeek, identities, sessions]);
+
   // opts.silent suppresses the per-item toast (the end-of-day review applies
   // several logs at once and shows a single summary toast instead).
   const commitLog = useCallback((idn, mins, note, opts) => {
@@ -1022,6 +1042,8 @@ export function StoreProvider({ children }) {
       celebrate,
       clearCelebrate,
       allMetOpen,
+      recapOpen,
+      closeRecap,
       closeAllMet,
       reminder,
       setReminderEnabled,
@@ -1062,7 +1084,7 @@ export function StoreProvider({ children }) {
       addOpen, openAdd, closeAdd, addIdentities, cosmosFocus,
       focusCosmos, clearCosmos, detail, openDetail, closeDetail, editing, openEditIdentity, closeEditIdentity, editIdentity, setIdentityPrefTimes, settingsOpen, openSettings, closeSettings, methodOpen, openMethod, closeMethod,
       scheduleOpen, openSchedule, closeSchedule, schedule, commitSchedule, clearSchedule, review, openReview, closeReview, commitReview,
-      celebrate, clearCelebrate, allMetOpen, closeAllMet, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn, freeHours, setFreeHours, setRelaxAllowance,
+      celebrate, clearCelebrate, allMetOpen, closeAllMet, recapOpen, closeRecap, reminder, setReminderEnabled, setReminderTime, remindersOn, setRemindersOn, freeHours, setFreeHours, setRelaxAllowance,
       session, syncStatus, lastSyncedAt, backupOpen, openBackup, closeBackup, signOut, exportData, deleteAccount, userName, setUserName, authSeen, markAuthSeen,
       setDesired, seedOnboarding, enter, restart, toast,
     ]

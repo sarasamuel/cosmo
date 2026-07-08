@@ -25,13 +25,13 @@ export function coachNote(identities, lastWeekRows) {
   };
 
   if (list.length === 0) {
-    return { date, note: 'Your cosmos is quiet right now — no identities to tend. Add one and give it a little of your week; that’s where Cosmo begins.' };
+    return { date, note: 'Your cosmos is quiet right now, with no identities to tend. Add one and give it a little of your week; that’s where Cosmo begins.' };
   }
 
   // 0 — nothing logged yet this week (fresh start, or every identity brand new).
   const anyTended = list.some((i) => i.actual > 0 || i.streak > 0);
   if (!anyTended) {
-    return { date, note: 'A fresh start. Your identities are set — give one of them a little of your week, and watch your cosmos come to life.' };
+    return { date, note: 'A fresh start. Your identities are set. Give one of them a little of your week, and watch your cosmos come to life.' };
   }
 
   const byOver = [...list].sort((a, b) => b.actual - b.desired - (a.actual - a.desired));
@@ -46,39 +46,39 @@ export function coachNote(identities, lastWeekRows) {
     return {
       date,
       note: i.desired <= 0 || i.actual >= i.desired
-        ? `${i.name} is right where you intended this week — a steady, single focus.`
+        ? `${i.name} is right where you intended this week: a steady, single focus.`
         : `You’re giving ${i.name} steady attention this week. A little more would bring it to your intention.`,
     };
   }
 
   // 2 — everything met: rare, celebratory, no nudge.
   if (list.every((i) => i.desired <= 0 || i.actual >= i.desired)) {
-    return { date, note: 'Every identity has had its share of you this week — a whole, rare balance. Nothing to fix here; just keep the rhythm that got you here.' };
+    return { date, note: 'Every identity has had its share of you this week, a whole and rare balance. Nothing to fix here; just keep the rhythm that got you here.' };
   }
 
   // 3 — a neglected (or brand-new) identity: open with warmth, then a gentle nudge.
   if (neglected.lastActiveDays >= 5) {
     const open = streaker.streak >= 3 && streaker.id !== neglected.id
-      ? `${streaker.name} is carrying your week — ${days(streaker.streak)} running. `
+      ? `${streaker.name} is carrying your week, ${days(streaker.streak)} running. `
       : lead.id !== neglected.id && lead.actual > lead.desired
       ? `${lead.name} has led your hours this week. `
       : '';
     if (neverTended(neglected)) {
-      return { date, note: `${open}${neglected.name} is still waiting for its first session — whenever you’re ready to begin.` };
+      return { date, note: `${open}${neglected.name} is still waiting for its first session, whenever you’re ready to begin.` };
     }
     const trend = behindLast(neglected.id) ? ', and it was quiet last week too' : '';
-    return { date, note: `${open}${neglected.name} has gone ${days(neglected.lastActiveDays)} untended${trend} — a short session would reawaken it, no guilt attached.` };
+    return { date, note: `${open}${neglected.name} has gone ${days(neglected.lastActiveDays)} untended${trend}. A short session would reawaken it, no guilt attached.` };
   }
 
   // 4 — well balanced: small total gap and nothing badly neglected.
   const totalGap = list.reduce((s, i) => s + Math.abs(i.desired - i.actual), 0);
   if (totalGap <= list.length * 4) {
-    return { date, note: 'Your week is finding its balance — most identities are close to what you intended. Keep tending whatever feels most alive; the rest will follow.' };
+    return { date, note: 'Your week is finding its balance; most identities are close to what you intended. Keep tending whatever feels most alive; the rest will follow.' };
   }
 
   // 5 — general lead / lag.
   const trend = behindLast(lag.id) ? ' two weeks running' : '';
-  return { date, note: `Your hours are leaning toward ${lead.name}. ${lag.name} sits furthest below your intention${trend} — a little time there would even things out, when you’re ready.` };
+  return { date, note: `Your hours are leaning toward ${lead.name}. ${lag.name} sits furthest below your intention${trend}. A little time there would even things out, when you’re ready.` };
 }
 
 /* The Reflect screen's "In a sentence" recap: a summary line + a few concrete
@@ -88,7 +88,7 @@ export function weekSummary(identities, lastWeekRows) {
   const list = identities || [];
 
   if (list.length === 0) {
-    return { summary: 'No identities to reflect on yet — add one, and a week of tending will start to take shape here.', wins: [] };
+    return { summary: 'No identities to reflect on yet. Add one, and a week of tending will start to take shape here.', wins: [] };
   }
 
   const tended = list.filter((i) => i.actual > 0);
@@ -102,20 +102,20 @@ export function weekSummary(identities, lastWeekRows) {
 
   let summary;
   if (!tended.length) {
-    summary = 'A quiet week so far — your identities are waiting. A single session is enough to begin the story.';
+    summary = 'A quiet week so far; your identities are waiting. A single session is enough to begin the story.';
   } else if (list.length === 1) {
     const i = list[0];
     summary = i.desired <= 0 || i.actual >= i.desired
-      ? `A focused week, all of it for ${i.name} — right where you meant it to be.`
+      ? `A focused week, all of it for ${i.name}, right where you meant it to be.`
       : `A week given to ${i.name}, building steadily toward what you intended.`;
   } else if (allMet) {
     summary = `A whole week: every identity got its share of you. ${lead.name} led, but nothing was left waiting.`;
   } else if (totalGap <= list.length * 4) {
-    summary = `A balanced week — your hours landed close to your intentions, with ${lead.name} just ahead and ${lag.name} just behind.`;
+    summary = `A balanced week: your hours landed close to your intentions, with ${lead.name} just ahead and ${lag.name} just behind.`;
   } else if (neglected.lastActiveDays >= 5 && !neverTended(neglected)) {
-    summary = `A week that leaned toward ${lead.name}, while ${neglected.name} slipped to the edges — a shape that’s yours to even out.`;
+    summary = `A week that leaned toward ${lead.name}, while ${neglected.name} slipped to the edges. That shape is yours to even out.`;
   } else {
-    summary = `${lead.name} carried this week; ${lag.name} had the least of you. Not a failure — just where your hours happened to fall.`;
+    summary = `${lead.name} carried this week; ${lag.name} had the least of you. Not a failure, just where your hours happened to fall.`;
   }
 
   // wins, in priority order, capped at 3 — concrete and earned
@@ -146,10 +146,10 @@ export function lastWeekTrend(weeks) {
   const prev = list[1];
   const delta = prev ? last.aligned - prev.aligned : 0;
   let note;
-  if (!prev) note = 'Your first full week, lived and logged — a starting point to build from.';
-  else if (delta > 0) note = 'Closer than the week before — your intentions and your hours are converging.';
-  else if (delta < 0) note = 'A little further from your intentions than the week before — an easy week to re-center.';
-  else note = 'Holding steady with the week before — a consistent rhythm.';
+  if (!prev) note = 'Your first full week, lived and logged. A starting point to build from.';
+  else if (delta > 0) note = 'Closer than the week before. Your intentions and your hours are converging.';
+  else if (delta < 0) note = 'A little further from your intentions than the week before. An easy week to re-center.';
+  else note = 'Holding steady with the week before: a consistent rhythm.';
   return { week: last.label, aligned: last.aligned, delta, note };
 }
 
@@ -174,14 +174,14 @@ export function buildInsights(identities) {
     out.push({
       kind: 'neglect', id: neglected.id,
       title: `${neglected.name} is waiting for its first session`,
-      body: 'You added it but haven’t begun. A few minutes is enough to bring it to life — whenever you’re ready.',
+      body: 'You added it but haven’t begun. A few minutes is enough to bring it to life, whenever you’re ready.',
       action: `Begin ${neglected.name}`,
     });
   } else if (neglected && neglected.lastActiveDays >= 5 && neglected.lastActiveDays < 30) {
     out.push({
       kind: 'neglect', id: neglected.id,
       title: `${neglected.name} has been quiet for ${days(neglected.lastActiveDays)}`,
-      body: 'Its longest gap lately. A short session would reawaken it — no guilt attached.',
+      body: 'Its longest gap lately. A short session would reawaken it, no guilt attached.',
       action: `Tend to ${neglected.name}`,
     });
   }
@@ -201,7 +201,7 @@ export function buildInsights(identities) {
     out.push({
       kind: 'balance', id: lead.id,
       title: `${lead.name} is carrying the week`,
-      body: `It’s ${lead.actual - lead.desired} points above your intention. Nothing wrong — just worth noticing.`,
+      body: `It’s ${lead.actual - lead.desired} points above your intention. Nothing wrong, just worth noticing.`,
       action: null,
     });
   }

@@ -20,6 +20,7 @@ import BackupSheet from './src/components/BackupSheet';
 import CosmosFocusPanel from './src/components/CosmosFocusPanel';
 import IntentionMet from './src/components/IntentionMet';
 import AllIntentionsMet from './src/components/AllIntentionsMet';
+import WeekRecap from './src/components/WeekRecap';
 import Toast from './src/components/Toast';
 import SplashScreen from './src/components/SplashScreen';
 
@@ -75,6 +76,7 @@ function AppShell() {
       <AddIdentitySheet />
       <EditIdentitySheet />
       <BackupSheet />
+      <WeekRecap />
       <IntentionMet idn={celebrate} onClose={clearCelebrate} />
       <Methodology open={methodOpen} onClose={closeMethod} />
       <AllIntentionsMet open={allMetOpen} form={form} identities={identities} onClose={closeAllMet} />
